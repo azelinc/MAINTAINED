@@ -16,7 +16,7 @@ const FIREBASE_CONFIG = {
 firebase.initializeApp(FIREBASE_CONFIG);
 const auth = firebase.auth();
 const db = firebase.database();
-const APP_VER = 'v1.0-maintained';
+const APP_VER = 'v1.1';
 const STAGING = location.hostname.includes('-staging');
 
 /* ─── STATE ─── */
