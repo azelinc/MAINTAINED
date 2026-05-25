@@ -680,13 +680,20 @@ function loadVehicleReminders(vid){
     var o=s.val()||{};
     var items=Object.entries(o).map(function(e){ return Object.assign({id:e[0]},e[1]); });
     items.sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));
-    $('reminder-list').innerHTML=items.length?items.map(r=>`<div class="item" data-rid="${esc(r.id)}">
+    $('reminder-list').innerHTML=items.length?items.map(r=>`<div class="item" data-rid="${esc(r.id)}" style="cursor:pointer">
 <div class="item-left"><div class="item-name">${esc(r.label)}${r.enabled===false?' <span style="color:var(--muted);font-size:0.68rem">(paused)</span>':''}</div>
 <div class="item-meta">${r.dueType==='odo'?'Due at '+toNum(r.dueOdo).toLocaleString()+' km':r.dueDate||''} &middot; ${r.desc||''}</div></div>
 <div class="item-amount">
-  <button class="btn-xs btn-ghost" onclick="window.toggleReminder('${esc(vid)}','${esc(r.id)}',${r.enabled!==false})">${r.enabled===false?'Resume':'Pause'}</button>
-  <button class="btn-xs btn-danger" onclick="window.deleteReminder('${esc(vid)}','${esc(r.id)}')">&times;</button>
+  <button class="btn-xs btn-ghost" onclick="event.stopPropagation();window.toggleReminder('${esc(vid)}','${esc(r.id)}',${r.enabled!==false})">${r.enabled===false?'Resume':'Pause'}</button>
 </div></div>`).join(''):'<div class="item"><div class="item-left"><div class="item-meta">No reminders &mdash; tap + to add</div></div></div>';
+    // Click item → edit
+    $('reminder-list').querySelectorAll('.item[data-rid]').forEach(el=>{
+      el.addEventListener('click',()=>{
+        var rid=el.dataset.rid;
+        var data=o[rid];
+        if(data) showReminderForm('edit',rid,data);
+      });
+    });
   });
 }
 
@@ -694,44 +701,116 @@ window.toggleReminder=function(vid,rid,curEnabled){
   remindRef(vid).child(rid).update({enabled:!curEnabled}).then(()=>loadVehicleReminders(vid));
 };
 
-window.deleteReminder=function(vid,rid){
-  if(!confirm('Delete this reminder?')) return;
-  remindRef(vid).child(rid).remove().then(()=>loadVehicleReminders(vid));
-};
+window._editingReminderId=null;
+window._remModalMode='add';
 
-function showReminderForm(){
+function showReminderForm(mode, rid, data){
   if(!activeVehicle) return;
+  mode=mode||'add';
+  window._remModalMode=mode;
+  window._editingReminderId=rid||null;
   const modal=$('reminder-modal');
-  $('rem-label').value='';
-  $('rem-type').value='date';
-  $('rem-period').value='1y';
-  $('rem-due-date').value='';
-  $('rem-due-odo').value='';
-  $('rem-note').value='';
+  const title=$('rem-modal-title');
+  const formFields=$('rem-form-fields');
+  const deleteConfirm=$('rem-delete-confirm');
+  const saveBtn=$('btn-save-reminder');
+  const deleteBtn=$('btn-rem-delete');
+
+  if(mode==='delete'){
+    title.textContent='Delete Reminder?';
+    formFields.classList.add('hidden');
+    deleteConfirm.classList.remove('hidden');
+    saveBtn.classList.add('hidden');
+    deleteBtn.classList.add('hidden');
+    modal.classList.remove('hidden');
+    return;
+  }
+
+  // Add or Edit mode
+  title.textContent=mode==='edit'?'Edit Reminder':'Add Reminder';
+  formFields.classList.remove('hidden');
+  deleteConfirm.classList.add('hidden');
+  saveBtn.classList.remove('hidden');
+  saveBtn.textContent=mode==='edit'?'Update Reminder':'Save Reminder';
+  deleteBtn.classList.toggle('hidden',mode!=='edit');
+
+  if(data){
+    $('rem-label').value=data.label||'';
+    $('rem-type').value=data.dueType||'date';
+    $('rem-due-odo').value=data.dueOdo||'';
+    $('rem-note').value=data.desc||'';
+    if(data.dueDate){
+      $('rem-period').value='custom';
+      $('rem-due-date').value=data.dueDate;
+    } else {
+      $('rem-period').value='1y';
+      $('rem-due-date').value='';
+    }
+  } else {
+    $('rem-label').value='';
+    $('rem-type').value='date';
+    $('rem-period').value='1y';
+    $('rem-due-date').value='';
+    $('rem-due-odo').value='';
+    $('rem-note').value='';
+  }
   updateRemFormFields();
   modal.classList.remove('hidden');
 }
-$('btn-reminder-close').addEventListener('click',()=>$('reminder-modal').classList.add('hidden'));
+
+function closeReminderModal(){
+  $('reminder-modal').classList.add('hidden');
+  window._editingReminderId=null;
+  window._remModalMode='add';
+}
+
+$('btn-reminder-close').addEventListener('click',closeReminderModal);
+$('btn-rem-cancel-delete').addEventListener('click',closeReminderModal);
 $('rem-type').addEventListener('change',updateRemFormFields);
 $('rem-period').addEventListener('change',updateRemFormFields);
+
 function updateRemFormFields(){
   const typ=$('rem-type').value;
   const period=$('rem-period').value;
-  // Date-based
   $('rem-period-field').classList.toggle('hidden',typ!=='date');
   $('rem-custom-date-field').classList.toggle('hidden',typ!=='date'||period!=='custom');
   $('rem-odo-field').classList.toggle('hidden',typ!=='odo');
 }
+
+// Delete button in edit mode → switch to delete confirm
+$('btn-rem-delete').addEventListener('click',()=>{
+  if(window._remModalMode==='edit' && window._editingReminderId){
+    showReminderForm('delete',window._editingReminderId);
+  }
+});
+
+// Confirm delete
+$('btn-rem-confirm-delete').addEventListener('click',()=>{
+  var rid=window._editingReminderId;
+  if(!rid) return;
+  remindRef(activeVehicle).child(rid).remove().then(()=>{
+    closeReminderModal();
+    loadVehicleReminders(activeVehicle);
+  });
+});
+
+// External delete (from × button) — deprecated, use modal edit+delete instead
+window.deleteReminder=function(vid,rid){
+  showReminderForm('delete',rid);
+};
+
 $('btn-save-reminder').addEventListener('click',()=>{
+  const errEl=$('rem-error');
+  errEl.style.display='none';
   const label=$('rem-label').value.trim();
-  if(!label){ alert('Enter a label'); return; }
+  if(!label){ errEl.textContent='Enter a label'; errEl.style.display='block'; return; }
   const typ=$('rem-type').value;
   let dueDate=null, dueOdo=null;
   if(typ==='date'){
     const period=$('rem-period').value;
     if(period==='custom'){
       dueDate=$('rem-due-date').value;
-      if(!dueDate){ alert('Select a due date'); return; }
+      if(!dueDate){ errEl.textContent='Select a due date'; errEl.style.display='block'; return; }
     } else {
       const months={m:1,'3m':3,'6m':6,y:12,'2y':24}[period.replace(/[0-9]/g,'')] * (parseInt(period)||1);
       const d=new Date(); d.setMonth(d.getMonth()+months);
@@ -739,14 +818,22 @@ $('btn-save-reminder').addEventListener('click',()=>{
     }
   } else {
     dueOdo=parseInt($('rem-due-odo').value)||0;
-    if(!dueOdo){ alert('Enter odometer value'); return; }
+    if(!dueOdo){ errEl.textContent='Enter odometer value'; errEl.style.display='block'; return; }
   }
   const desc=$('rem-note').value.trim();
-  const rec={label:label,dueType:typ,dueDate:dueDate,dueOdo:dueOdo,desc:desc,enabled:true,createdAt:firebase.database.ServerValue.TIMESTAMP};
-  remindRef(activeVehicle).push().set(rec).then(()=>{
-    $('reminder-modal').classList.add('hidden');
-    loadVehicleReminders(activeVehicle);
-  });
+  const rec={label:label,dueType:typ,dueDate:dueDate,dueOdo:dueOdo,desc:desc,enabled:true};
+  if(window._editingReminderId){
+    remindRef(activeVehicle).child(window._editingReminderId).update(rec).then(()=>{
+      closeReminderModal();
+      loadVehicleReminders(activeVehicle);
+    });
+  } else {
+    rec.createdAt=firebase.database.ServerValue.TIMESTAMP;
+    remindRef(activeVehicle).push().set(rec).then(()=>{
+      closeReminderModal();
+      loadVehicleReminders(activeVehicle);
+    });
+  }
 });
 
 /* ─── SETTINGS ─── */
