@@ -290,16 +290,25 @@ function loadVehicleTabs(vid){
     }
   });
   }
-  // RM/km from all costs (always computed, not just fuel)
+  // RM/km + Cost/month from all costs (always computed)
   computeAllInCostPerKm(vid);
+  // Cost/month from maintenance (quick, always-on backup)
+  maintRef(vid).once('value').then(s=>{
+    const arr=Object.values(s.val()||{}).filter(o=>o.totalCost>0);
+    if(!arr.length) return;
+    let cost=0, minDt=null;
+    arr.forEach(o=>{ cost+=toNum(o.totalCost); if(o.date&&(!minDt||o.date<minDt)) minDt=o.date; });
+    if(cost>0 && minDt){
+      const d=Math.max(1,Math.ceil((now()-new Date(minDt))/86400000));
+      $('stat-costmonth').textContent=fmtMoney(cost/Math.max(0.5,d/30));
+    }
+  });
   // Last service
-  if(settings.modules.service){
   maintRef(vid).once('value').then(s=>{
     const sv=s.val()||{};
     const arr=Object.values(sv).sort((a,b)=> (b.date||'').localeCompare(a.date||''));
     $('stat-lastsvc').textContent = arr[0]?.date || '—';
   });
-  }
   // Fill-up list
   if(settings.modules.fuel){
   fillRef(vid).once('value').then(s=>{
