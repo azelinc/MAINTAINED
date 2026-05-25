@@ -681,18 +681,23 @@ function loadRemindersTicker(){
         var vid=vids[i]; var v=vehicles[vid];
         Object.values(reminders).forEach(r=>{
           if(r.enabled===false) return;
+          if(r.status==='completed') return; // skip done
           if(r.dueType==='date' && r.dueDate){
             var due=new Date(r.dueDate);
             var daysRemaining=Math.ceil((due-now())/86400000);
-            if(daysRemaining<=90) entries.push({vid:vid,plate:v.plate||vid,dueLabel:r.label+' ('+(daysRemaining>0?'in '+daysRemaining+'d':'Overdue')+')', urgency:daysRemaining});
+            var isOverdue=daysRemaining<=0;
+            if(daysRemaining<=90) entries.push({vid:vid,plate:v.plate||vid,label:r.label,days:daysRemaining,isOverdue:isOverdue});
           }
         });
       });
-      entries.sort((a,b)=>a.urgency-b.urgency);
+      entries.sort((a,b)=>a.days-b.days);
       var ticker=$('reminder-ticker');
       if(entries.length){
         ticker.classList.remove('hidden');
-        $('reminder-ticker-inner').textContent=' ⚠ '+entries.map(e=>e.plate+': '+e.dueLabel).join('  ·  ')+'  ·  ';
+        $('reminder-ticker-inner').innerHTML=' ⚠ '+entries.map(e=>{
+          var txt=e.plate+': '+e.label+(e.isOverdue?' ('+Math.abs(e.days)+'d overdue)':(e.days>0?' (in '+e.days+'d)':' (today)'));
+          return e.isOverdue?'<span style="color:var(--danger)">'+txt+'</span>':txt;
+        }).join('  ·  ')+'  ·  ';
       } else { ticker.classList.add('hidden'); }
     });
   });
@@ -702,26 +707,101 @@ function loadVehicleReminders(vid){
   remindRef(vid).once('value').then(s=>{
     var o=s.val()||{};
     var items=Object.entries(o).map(function(e){ return Object.assign({id:e[0]},e[1]); });
-    items.sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));
-    $('reminder-list').innerHTML=items.length?items.map(r=>`<div class="item" data-rid="${esc(r.id)}" style="cursor:pointer">
-<div class="item-left"><div class="item-name">${esc(r.label)}${r.enabled===false?' <span style="color:var(--muted);font-size:0.68rem">(paused)</span>':''}</div>
-<div class="item-meta">${r.dueType==='odo'?'Due at '+toNum(r.dueOdo).toLocaleString()+' km':r.dueDate||''}${r.interval?' · Every '+r.interval:''}${r.refLabel?'<br><span style="color:var(--muted);font-size:0.65rem">'+esc(r.refLabel)+'</span>':''}${r.desc?' &middot; '+esc(r.desc):''}</div></div>
-<div class="item-amount">
-  <button class="btn-xs btn-ghost" onclick="event.stopPropagation();window.toggleReminder('${esc(vid)}','${esc(r.id)}',${r.enabled!==false})">${r.enabled===false?'Resume':'Pause'}</button>
-</div></div>`).join(''):'<div class="item"><div class="item-left"><div class="item-meta">No reminders &mdash; tap + to add</div></div></div>';
-    // Click item → edit
-    $('reminder-list').querySelectorAll('.item[data-rid]').forEach(el=>{
-      el.addEventListener('click',()=>{
-        var rid=el.dataset.rid;
-        var data=o[rid];
-        if(data) showReminderForm('edit',rid,data);
+    // Auto-detect completion: fetch expenses & services for this vehicle
+    Promise.all([
+      exp2Ref(vid).once('value').then(s=>s.val()||{}),
+      maintRef(vid).once('value').then(s=>s.val()||{})
+    ]).then(([exps,svcs])=>{
+      var nowDate=fmtDate(now());
+      items.forEach(r=>{
+        if(r.status==='completed') return; // already done
+        if(r.enabled===false) return;
+        var matchKey=(r.refLabel||r.label||'').toLowerCase();
+        var found=false;
+        // Check expenses: category match + date >= reminder date
+        if(r.dueType==='date' && r.dueDate){
+          Object.values(exps).forEach(ex=>{
+            var cat=(ex.category||'').toLowerCase();
+            if(cat===matchKey || cat.includes(matchKey) || matchKey.includes(cat)){
+              if(ex.date >= r.dueDate){ found=true; }
+            }
+          });
+        }
+        // Check services: items match + date >= reminder date
+        if(!found && r.dueType==='date' && r.dueDate){
+          Object.values(svcs).forEach(sv=>{
+            var svcName=(sv.items||'').toLowerCase();
+            if(svcName===matchKey || svcName.includes(matchKey) || matchKey.includes(svcName)){
+              if(sv.date >= r.dueDate){ found=true; }
+            }
+          });
+        }
+        // Check odo-based
+        if(!found && r.dueType==='odo' && r.dueOdo){
+          Object.values(svcs).forEach(sv=>{
+            var svcName=(sv.items||'').toLowerCase();
+            var svcOdo=toNum(sv.odometer);
+            if((svcName===matchKey||svcName.includes(matchKey)||matchKey.includes(svcName)) && svcOdo>=r.dueOdo){
+              found=true;
+            }
+          });
+          // Also check expenses with odometer
+          Object.values(exps).forEach(ex=>{
+            var cat=(ex.category||'').toLowerCase();
+            var exOdo=toNum(ex.odometer);
+            if((cat===matchKey||cat.includes(matchKey)||matchKey.includes(cat)) && exOdo>=r.dueOdo){
+              found=true;
+            }
+          });
+        }
+        if(found){
+          remindRef(vid).child(r.id).update({status:'completed',completedAt:firebase.database.ServerValue.TIMESTAMP});
+          r.status='completed';
+        }
       });
+      // Render
+      renderReminderList(vid, items, o);
+    });
+  });
+}
+
+function renderReminderList(vid, items, rawO){
+  items.sort((a,b)=>{
+    if(a.status==='completed' && b.status!=='completed') return 1;
+    if(a.status!=='completed' && b.status==='completed') return -1;
+    return (a.dueDate||'').localeCompare(b.dueDate||'');
+  });
+  var nowDate=fmtDate(now());
+  $('reminder-list').innerHTML=items.length?items.map(r=>{
+    var isOverdue=false, isDone=r.status==='completed';
+    if(!isDone && r.dueType==='date' && r.dueDate && r.dueDate < nowDate) isOverdue=true;
+    var rowStyle=isOverdue?'border-left:3px solid var(--danger)':(isDone?'opacity:0.5;border-left:3px solid var(--success)':'');
+    var overdueBadge=isOverdue?' <span style="color:var(--danger);font-size:0.65rem;font-weight:600">Overdue</span>':'';
+    var doneBadge=isDone?' <span style="color:var(--success);font-size:0.68rem">✓ Done</span>':'';
+    var btns=isDone
+      ? `<button class="btn-xs btn-ghost" onclick="event.stopPropagation();window.toggleReminderStatus('${esc(vid)}','${esc(r.id)}','active')">Undo</button>`
+      : `<button class="btn-xs btn-ghost" onclick="event.stopPropagation();window.toggleReminder('${esc(vid)}','${esc(r.id)}',${r.enabled!==false})">${r.enabled===false?'Resume':'Pause'}</button>`;
+    return `<div class="item" data-rid="${esc(r.id)}" style="cursor:pointer;${rowStyle}">
+<div class="item-left"><div class="item-name">${esc(r.label)}${overdueBadge}${doneBadge}${r.enabled===false?' <span style="color:var(--muted);font-size:0.68rem">(paused)</span>':''}</div>
+<div class="item-meta">${r.dueType==='odo'?'Due at '+toNum(r.dueOdo).toLocaleString()+' km':r.dueDate||''}${r.interval?' · Every '+r.interval:''}${r.refLabel?'<br><span style="color:var(--muted);font-size:0.65rem">'+esc(r.refLabel)+'</span>':''}${r.desc?' · '+esc(r.desc):''}</div></div>
+<div class="item-amount">${btns}</div></div>`;
+  }).join(''):'<div class="item"><div class="item-left"><div class="item-meta">No reminders &mdash; tap + to add</div></div></div>';
+  // Click item → edit
+  $('reminder-list').querySelectorAll('.item[data-rid]').forEach(el=>{
+    el.addEventListener('click',()=>{
+      var rid=el.dataset.rid;
+      var data=rawO[rid];
+      if(data) showReminderForm('edit',rid,data);
     });
   });
 }
 
 window.toggleReminder=function(vid,rid,curEnabled){
   remindRef(vid).child(rid).update({enabled:!curEnabled}).then(()=>loadVehicleReminders(vid));
+};
+
+window.toggleReminderStatus=function(vid,rid,newStatus){
+  remindRef(vid).child(rid).update({status:newStatus,completedAt:newStatus==='completed'?firebase.database.ServerValue.TIMESTAMP:null}).then(()=>loadVehicleReminders(vid));
 };
 
 window._editingReminderId=null;
@@ -881,7 +961,7 @@ $('btn-save-reminder').addEventListener('click',()=>{
     if(!dueOdo){ errEl.textContent='Enter odometer interval'; errEl.style.display='block'; return; }
   }
   const desc=$('rem-note').value.trim();
-  const rec={label:label,dueType:typ,dueDate:dueDate,dueOdo:dueOdo,desc:desc,enabled:true};
+  const rec={label:label,dueType:typ,dueDate:dueDate,dueOdo:dueOdo,desc:desc,enabled:true,status:'active'};
   // Store reference info if from a record
   if(ctx){
     rec.refLabel=ctx.refLabel||'';
