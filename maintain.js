@@ -31,8 +31,8 @@ let _vehCallback = null;
 function $(id){ return document.getElementById(id); }
 function now(){ return new Date(); }
 function fmtDate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
-function fmtMoney(n,sym){ const s=sym||settings.currency||'RM'; return s+' '+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
-function fmtMoneyW(n,sym){ const s=sym||settings.currency||'RM'; return s+' '+n.toLocaleString('en-US',{maximumFractionDigits:0}); }
+function fmtMoney(n,sym){ return (n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtMoneyW(n,sym){ return (n||0).toLocaleString('en-US',{maximumFractionDigits:0}); }
 function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 function toNum(v){ const n=parseFloat(v); return isNaN(n)?0:n; }
 function showScreen(id){
