@@ -136,7 +136,8 @@ html, body {
 }
 .item-left { display: flex; flex-direction: column; gap: 2px; }
 .item-name { font-weight: 500; font-size: 0.95rem; }
-.item-meta { font-size: 0.75rem; color: var(--muted); }
+.item-meta { font-size: 0.75rem; color: var(--muted); display: flex; align-items: center; flex-wrap: wrap; gap: 2px 4px; }
+.remind-btn { display: inline-flex; align-items: center; white-space: nowrap; flex-shrink: 0; }
 .item-amount { font-weight: 700; font-size: 1rem; }
 
 .load-more-btn {
@@ -304,3 +305,11 @@ html, body {
 .overdue-badge {
   animation: overdueBadgeBlink 1.2s ease-in-out infinite;
 }
+
+/* ─── VEHICLE CARD REMINDER DOT ─── */
+.vc-rem-dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  vertical-align: middle; transition: all 0.3s;
+}
+.vc-rem-dot.overdue { background: var(--danger); box-shadow: 0 0 6px rgba(239,68,68,0.6); animation: overdueBadgeBlink 1.2s ease-in-out infinite; }
+.vc-rem-dot.active { background: var(--warn); box-shadow: 0 0 4px rgba(245,158,11,0.4); }

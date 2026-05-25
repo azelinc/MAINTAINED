@@ -192,7 +192,7 @@ function renderDash(){
     vids.forEach(id=>{
       const v=vehicles[id]; const isMotorcycle=v.vehicleType==='Motorcycle';
       const vc=vidColors[id]||'#ef4444';
-      h+=`<div class="vehicle-card" data-vid="${esc(id)}" style="border-left:4px solid ${vc}"><div class="vc-top"><span class="vc-dot" style="background:${vc}"></span><span style="font-size:1rem">${isMotorcycle?'🏍️':'🚗'}</span><div class="vc-info"><div class="vehicle-name">${esc(v.make||'')} ${esc(v.model||'')} ${esc(v.year||'')}</div><div class="vehicle-plate">${esc(v.plate||'')} · ${esc(v.fuelType||'Petrol')}</div></div></div><div class="vc-costs"><div class="vc-stat"><span class="vc-stat-val" id="vccpd-${esc(id)}">—</span><span class="vc-stat-label">/mo</span></div><div class="vc-stat"><span class="vc-stat-val" id="vccpkm-${esc(id)}">—</span><span class="vc-stat-label">/km</span></div></div></div>`;
+      h+=`<div class="vehicle-card" data-vid="${esc(id)}" style="border-left:4px solid ${vc}"><div class="vc-top"><span class="vc-dot" style="background:${vc}"></span><span style="font-size:1rem">${isMotorcycle?'🏍️':'🚗'}</span><div class="vc-info"><div class="vehicle-name">${esc(v.make||'')} ${esc(v.model||'')} ${esc(v.year||'')}</div><div class="vehicle-plate">${esc(v.plate||'')} · ${esc(v.fuelType||'Petrol')} <span class="vc-rem-dot" id="vcrdot-${esc(id)}" style="display:none"></span></div></div></div><div class="vc-costs"><div class="vc-stat"><span class="vc-stat-val" id="vccpd-${esc(id)}">—</span><span class="vc-stat-label">/mo</span></div><div class="vc-stat"><span class="vc-stat-val" id="vccpkm-${esc(id)}">—</span><span class="vc-stat-label">/km</span></div></div></div>`;
     });
     container.innerHTML=h;
     container.querySelectorAll('.vehicle-card[data-vid]').forEach(c=>c.addEventListener('click',()=>openVehicle(c.dataset.vid,vehicles[c.dataset.vid])));
@@ -293,6 +293,27 @@ function renderDash(){
       });
     }
     applyModules();
+    // Load reminder indicators for vehicle cards
+    if(settings.modules.reminders){
+      Promise.all(vids.map(vid=>remindRef(vid).once('value').then(s=>s.val()||{}))).then(remResults=>{
+        remResults.forEach((reminders,i)=>{
+          const vid=vids[i];
+          let activeCount=0, overdueCount=0;
+          const nowDate=fmtDate(now());
+          Object.values(reminders).forEach(r=>{
+            if(r.status==='completed'||r.enabled===false) return;
+            if((r.dueType==='date'||r.dueType==='both') && r.dueDate && r.dueDate < nowDate) overdueCount++;
+            else activeCount++;
+          });
+          const dot=$('vcrdot-'+vid);
+          if(dot && (activeCount+overdueCount)>0){
+            dot.style.display='inline-block';
+            dot.style.cssText='display:inline-block;width:8px;height:8px;border-radius:50%;margin-left:6px;vertical-align:middle;'+(overdueCount>0?'background:#ef4444;box-shadow:0 0 6px rgba(239,68,68,0.6)':(activeCount>0?'background:#f59e0b':''));
+            dot.title=(overdueCount>0?overdueCount+' overdue':'')+(overdueCount>0&&activeCount>0?', ':'')+(activeCount>0?activeCount+' active':'')+' reminder'+(activeCount+overdueCount>1?'s':'');
+          }
+        });
+      });
+    }
     loadRemindersTicker();
   });
 }
@@ -439,7 +460,7 @@ function loadVehicleTabs(vid){
   maintRef(vid).once('value').then(s=>{
     const o=s.val()||{};
     let items=Object.entries(o).map(([id,r])=>({id,...r})).sort((a,b)=> (b.date||'').localeCompare(a.date||''));
-    $('maintenance-list').innerHTML = items.length ? items.map(r=>`<div class="item" data-mid="${esc(r.id)}"><div class="item-left"><div class="item-name">${esc(r.items||'Service')}${r.remarks?' <span style="color:var(--muted);font-size:0.7rem;font-style:italic">'+esc(r.remarks)+'</span>':''}</div><div class="item-meta">${fmtDate2(r.date)} · ${esc(r.shop||'')} · Odo ${toNum(r.odometer).toLocaleString()} <button class="btn-xs btn-ghost remind-svc-btn" data-label="${esc(r.items||'Service')}" data-date="${r.date||''}" data-odo="${toNum(r.odometer)}" style="font-size:0.65rem">🔔</button></div></div><div class="item-amount">${fmtMoney(toNum(r.totalCost))}</div></div>`).join('') : '<div class="item"><div class="item-left"><div class="item-meta">No service records</div></div></div>';
+    $('maintenance-list').innerHTML = items.length ? items.map(r=>`<div class="item" data-mid="${esc(r.id)}"><div class="item-left"><div class="item-name">${esc(r.items||'Service')}${r.remarks?' <span style="color:var(--muted);font-size:0.7rem;font-style:italic">'+esc(r.remarks)+'</span>':''}</div><div class="item-meta">${fmtDate2(r.date)} · ${esc(r.shop||'')} · Odo ${toNum(r.odometer).toLocaleString()} <span class="remind-btn"><button class="btn-xs btn-ghost remind-svc-btn" data-label="${esc(r.items||'Service')}" data-date="${r.date||''}" data-odo="${toNum(r.odometer)}" style="font-size:0.65rem">🔔</button></span></div></div><div class="item-amount">${fmtMoney(toNum(r.totalCost))}</div></div>`).join('') : '<div class="item"><div class="item-left"><div class="item-meta">No service records</div></div></div>';
     $('maintenance-list').querySelectorAll('.item[data-mid]').forEach(el=>el.addEventListener('click',()=>editMaintenance(vid,el.dataset.mid)));
     // 🔔 buttons
     $('maintenance-list').querySelectorAll('.remind-svc-btn').forEach(btn=>{
@@ -458,7 +479,7 @@ function loadVehicleTabs(vid){
   exp2Ref(vid).once('value').then(s=>{
     const o=s.val()||{};
     let items=Object.entries(o).map(([id,r])=>({id,...r})).sort((a,b)=> (b.date||'').localeCompare(a.date||''));
-    $('expense-list').innerHTML = items.length ? items.map(r=>`<div class="item" data-eid="${esc(r.id)}"><div class="item-left"><div class="item-name">${esc(r.category||'Expense')}${r.description?' · '+esc(r.description):''}</div><div class="item-meta">${fmtDate2(r.date)}${r.odometer?' · Odo '+toNum(r.odometer).toLocaleString()+' km':''} <button class="btn-xs btn-ghost remind-exp-btn" data-label="${esc(r.category||'Expense')}${r.description?' · '+esc(r.description):''}" data-date="${r.date||''}" data-odo="${toNum(r.odometer)}" style="font-size:0.65rem">🔔</button></div></div><div class="item-amount">${fmtMoney(toNum(r.amount))}</div></div>`).join('') : '<div class="item"><div class="item-left"><div class="item-meta">No expenses</div></div></div>';
+    $('expense-list').innerHTML = items.length ? items.map(r=>`<div class="item" data-eid="${esc(r.id)}"><div class="item-left"><div class="item-name">${esc(r.category||'Expense')}${r.description?' · '+esc(r.description):''}</div><div class="item-meta">${fmtDate2(r.date)}${r.odometer?' · Odo '+toNum(r.odometer).toLocaleString()+' km':''} <span class="remind-btn"><button class="btn-xs btn-ghost remind-exp-btn" data-label="${esc(r.category||'Expense')}${r.description?' · '+esc(r.description):''}" data-date="${r.date||''}" data-odo="${toNum(r.odometer)}" style="font-size:0.65rem">🔔</button></span></div></div><div class="item-amount">${fmtMoney(toNum(r.amount))}</div></div>`).join('') : '<div class="item"><div class="item-left"><div class="item-meta">No expenses</div></div></div>';
     $('expense-list').querySelectorAll('.item[data-eid]').forEach(el=>el.addEventListener('click',()=>editExpense(vid,el.dataset.eid)));
     // 🔔 buttons
     $('expense-list').querySelectorAll('.remind-exp-btn').forEach(btn=>{
