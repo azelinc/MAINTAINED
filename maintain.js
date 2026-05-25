@@ -257,10 +257,14 @@ function renderDash(){
           // Distance from consecutive non-partial fill-ups for this vehicle
           const fillArr=Object.values(fills).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
           for(let j=1;j<fillArr.length;j++){ if(fillArr[j].partial) continue; const d=toNum(fillArr[j].odometer)-toNum(fillArr[j-1].odometer); if(d>0) vehDist+=d; }
-          // Fallback: odometer range from all records (fills, service, expenses) if no trip/fillup distance
+          // Fallback: odometer range from all records + vehicle's stored odo
           let minOdo=Infinity, maxOdo=-Infinity;
           Object.values(fills).forEach(o=>{ const odo=toNum(o.odometer); if(odo>0){ if(odo<minOdo) minOdo=odo; if(odo>maxOdo) maxOdo=odo; } });
           Object.values(svcs).forEach(o=>{ const odo=toNum(o.odometer); if(odo>0){ if(odo<minOdo) minOdo=odo; if(odo>maxOdo) maxOdo=odo; } });
+          Object.values(exps).forEach(o=>{ const odo=toNum(o.odometer); if(odo>0){ if(odo<minOdo) minOdo=odo; if(odo>maxOdo) maxOdo=odo; } });
+          // Also consider the vehicle's stored odometer for a more accurate max
+          const storedOdo=toNum(v.odometer);
+          if(storedOdo>maxOdo) maxOdo=storedOdo;
           if(vehDist===0 && minOdo<maxOdo){ vehDist=maxOdo-minOdo; totalDist+=vehDist; }
           // Update this vehicle's card stats
           const vehDays=vehEarliest?Math.max(1,Math.ceil((now()-new Date(vehEarliest))/86400000)):1;
@@ -324,6 +328,56 @@ function openVehicle(vid, v){
   loadVehicleTabs(vid);
   // Set default trip start from last end
   tripRef(vid).once('value').then(s=>{ const o=s.val()||{}; const arr=Object.values(o).sort((a,b)=>b.date?.localeCompare(a.date)||0); if(arr[0]) $('tr-start').value = arr[0].endOdo||''; });
+  // Odometer inline edit
+  initOdoEdit(vid, v);
+}
+
+function initOdoEdit(vid, v){
+  const odoSpan=$('vehicle-odo');
+  const editBtn=$('btn-odo-edit');
+  const savedSpan=$('odo-saved');
+  if(!odoSpan) return;
+  function startEdit(){
+    const curOdo=toNum(v.odometer).toString();
+    const input=document.createElement('input');
+    input.type='number'; input.value=curOdo; input.min='0';
+    input.style.cssText='width:100px;text-align:center;background:var(--surface);color:var(--text);border:1px solid var(--accent);border-radius:6px;padding:2px 6px;font-size:0.9rem;font-weight:600;';
+    odoSpan.replaceWith(input);
+    input.focus(); input.select();
+    function save(){
+      const newOdo=parseInt(input.value)||0;
+      if(newOdo===toNum(v.odometer)){ cancel(); return; }
+      vRef().child(vid).update({odometer:newOdo}).then(()=>{
+        v.odometer=newOdo;
+        const span=document.createElement('span');
+        span.id='vehicle-odo';
+        span.style.cssText='cursor:pointer;border-bottom:1px dashed var(--muted)';
+        span.title='Click to update';
+        span.textContent=newOdo.toLocaleString();
+        span.addEventListener('click',startEdit);
+        input.replaceWith(span);
+        if(savedSpan){ savedSpan.style.display='inline'; setTimeout(()=>{savedSpan.style.display='none';},2000); }
+        // Refresh tabs to re-check reminders
+        loadVehicleTabs(vid);
+      }).catch(e=>{
+        cancel();
+        console.error('Odo update failed:',e);
+      });
+    }
+    function cancel(){
+      const span=document.createElement('span');
+      span.id='vehicle-odo';
+      span.style.cssText='cursor:pointer;border-bottom:1px dashed var(--muted)';
+      span.title='Click to update';
+      span.textContent=toNum(v.odometer).toLocaleString();
+      span.addEventListener('click',startEdit);
+      if(input.parentNode) input.replaceWith(span);
+    }
+    input.addEventListener('blur',save);
+    input.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); save(); } if(e.key==='Escape'){ e.preventDefault(); cancel(); } });
+  }
+  odoSpan.addEventListener('click',startEdit);
+  if(editBtn) editBtn.addEventListener('click',startEdit);
 }
 
 function loadVehicleTabs(vid){
@@ -683,7 +737,7 @@ function loadRemindersTicker(){
         Object.values(reminders).forEach(r=>{
           if(r.enabled===false) return;
           if(r.status==='completed') return; // skip done
-          if(r.dueType==='date' && r.dueDate){
+          if(r.dueType==='date'||r.dueType==='both'){ // 'both' also has a dueDate
             var due=new Date(r.dueDate);
             var daysRemaining=Math.ceil((due-now())/86400000);
             var isOverdue=daysRemaining<=0;
@@ -783,7 +837,7 @@ function renderReminderList(vid, items, rawO){
     var doneBadge=isDone?' <span style="color:var(--success);font-size:0.68rem">✓ Done</span>':'';
     var btns=isDone
       ? `<button class="btn-xs btn-ghost" onclick="event.stopPropagation();window.toggleReminderStatus('${esc(vid)}','${esc(r.id)}','active')">Undo</button>`
-      : `<button class="btn-xs btn-ghost" onclick="event.stopPropagation();window.toggleReminder('${esc(vid)}','${esc(r.id)}',${r.enabled!==false})">${r.enabled===false?'Resume':'Pause'}</button>`;
+      : `<button class="btn-xs btn-ghost" onclick="event.stopPropagation();window.toggleReminderStatus('${esc(vid)}','${esc(r.id)}','completed')" style="color:var(--success)">Done</button> <button class="btn-xs btn-ghost" onclick="event.stopPropagation();window.toggleReminder('${esc(vid)}','${esc(r.id)}',${r.enabled!==false})">${r.enabled===false?'Resume':'Pause'}</button>`;
     return `<div class="item${rowClass}" data-rid="${esc(r.id)}" style="cursor:pointer;${rowStyle}">
 <div class="item-left"><div class="item-name">${esc(r.label)}${overdueBadge}${doneBadge}${r.enabled===false?' <span style="color:var(--muted);font-size:0.68rem">(paused)</span>':''}</div>
 <div class="item-meta">${r.dueType==='odo'?'Due at '+toNum(r.dueOdo).toLocaleString()+' km':(r.dueType==='both'?('Due: '+(r.dueDate||'')+' · '+toNum(r.dueOdo||0).toLocaleString()+' km'):r.dueDate||'')}${r.interval?' · Every '+r.interval:''}${r.refLabel?'<br><span style="color:var(--muted);font-size:0.65rem">'+esc(r.refLabel)+'</span>':''}${r.desc?' · '+esc(r.desc):''}</div></div>
@@ -980,7 +1034,11 @@ $('btn-save-reminder').addEventListener('click',()=>{
     if(!dueOdo){ errEl.textContent='Enter odometer interval'; errEl.style.display='block'; return; }
   }
   const desc=$('rem-note').value.trim();
-  const rec={label:label,dueType:typ,dueDate:dueDate,dueOdo:dueOdo,desc:desc,enabled:true,status:'active'};
+  const rec={label:label,dueType:typ,dueDate:dueDate,dueOdo:dueOdo,desc:desc};
+  if(!window._editingReminderId){
+    rec.enabled=true;
+    rec.status='active';
+  }
   // Store reference info if from a record
   if(ctx){
     rec.refLabel=ctx.refLabel||'';
