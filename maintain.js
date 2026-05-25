@@ -776,13 +776,15 @@ function renderReminderList(vid, items, rawO){
   $('reminder-list').innerHTML=items.length?items.map(r=>{
     var isOverdue=false, isDone=r.status==='completed';
     if(!isDone && r.dueType==='date' && r.dueDate && r.dueDate < nowDate) isOverdue=true;
-    var rowStyle=isOverdue?'border-left:3px solid var(--danger)':(isDone?'opacity:0.5;border-left:3px solid var(--success)':'');
-    var overdueBadge=isOverdue?' <span style="color:var(--danger);font-size:0.65rem;font-weight:600">Overdue</span>':'';
+    var rowStyle=isOverdue?'':'';
+    var rowClass=isOverdue?' overdue':'';
+    if(isDone) rowStyle='opacity:0.5;border-left:3px solid var(--success)';
+    var overdueBadge=isOverdue?' <span class="overdue-badge" style="color:var(--danger);font-size:0.65rem;font-weight:600">⚠ Overdue</span>':'';
     var doneBadge=isDone?' <span style="color:var(--success);font-size:0.68rem">✓ Done</span>':'';
     var btns=isDone
       ? `<button class="btn-xs btn-ghost" onclick="event.stopPropagation();window.toggleReminderStatus('${esc(vid)}','${esc(r.id)}','active')">Undo</button>`
       : `<button class="btn-xs btn-ghost" onclick="event.stopPropagation();window.toggleReminder('${esc(vid)}','${esc(r.id)}',${r.enabled!==false})">${r.enabled===false?'Resume':'Pause'}</button>`;
-    return `<div class="item" data-rid="${esc(r.id)}" style="cursor:pointer;${rowStyle}">
+    return `<div class="item${rowClass}" data-rid="${esc(r.id)}" style="cursor:pointer;${rowStyle}">
 <div class="item-left"><div class="item-name">${esc(r.label)}${overdueBadge}${doneBadge}${r.enabled===false?' <span style="color:var(--muted);font-size:0.68rem">(paused)</span>':''}</div>
 <div class="item-meta">${r.dueType==='odo'?'Due at '+toNum(r.dueOdo).toLocaleString()+' km':r.dueDate||''}${r.interval?' · Every '+r.interval:''}${r.refLabel?'<br><span style="color:var(--muted);font-size:0.65rem">'+esc(r.refLabel)+'</span>':''}${r.desc?' · '+esc(r.desc):''}</div></div>
 <div class="item-amount">${btns}</div></div>`;

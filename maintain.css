@@ -286,3 +286,21 @@ html, body {
 .row { display: flex; align-items: center; gap: 10px; }
 .inline-field { display: flex; align-items: center; gap: 10px; }
 .inline-field input { width: auto; }
+
+/* ─── OVERDUE BLINK ─── */
+@keyframes overduePulse {
+  0%, 100% { border-left-color: var(--danger); box-shadow: 0 0 6px rgba(239,68,68,0.15); }
+  50% { border-left-color: #ff6b6b; box-shadow: 0 0 14px rgba(239,68,68,0.45); }
+}
+@keyframes overdueBadgeBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.item.overdue {
+  background: rgba(239,68,68,0.08) !important;
+  border-left: 3px solid var(--danger);
+  animation: overduePulse 1.8s ease-in-out infinite;
+}
+.overdue-badge {
+  animation: overdueBadgeBlink 1.2s ease-in-out infinite;
+}
