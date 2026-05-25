@@ -720,7 +720,7 @@ function loadVehicleReminders(vid){
         var matchKey=(r.refLabel||r.label||'').toLowerCase();
         var found=false;
         // Check expenses: category match + date >= reminder date
-        if(r.dueType==='date' && r.dueDate){
+        if((r.dueType==='date'||r.dueType==='both') && r.dueDate){
           Object.values(exps).forEach(ex=>{
             var cat=(ex.category||'').toLowerCase();
             if(cat===matchKey || cat.includes(matchKey) || matchKey.includes(cat)){
@@ -729,7 +729,7 @@ function loadVehicleReminders(vid){
           });
         }
         // Check services: items match + date >= reminder date
-        if(!found && r.dueType==='date' && r.dueDate){
+        if(!found && (r.dueType==='date'||r.dueType==='both') && r.dueDate){
           Object.values(svcs).forEach(sv=>{
             var svcName=(sv.items||'').toLowerCase();
             if(svcName===matchKey || svcName.includes(matchKey) || matchKey.includes(svcName)){
@@ -737,8 +737,8 @@ function loadVehicleReminders(vid){
             }
           });
         }
-        // Check odo-based
-        if(!found && r.dueType==='odo' && r.dueOdo){
+        // Check odo-based (also covers 'both' type)
+        if(!found && (r.dueType==='odo'||r.dueType==='both') && r.dueOdo){
           Object.values(svcs).forEach(sv=>{
             var svcName=(sv.items||'').toLowerCase();
             var svcOdo=toNum(sv.odometer);
@@ -775,7 +775,7 @@ function renderReminderList(vid, items, rawO){
   var nowDate=fmtDate(now());
   $('reminder-list').innerHTML=items.length?items.map(r=>{
     var isOverdue=false, isDone=r.status==='completed';
-    if(!isDone && r.dueType==='date' && r.dueDate && r.dueDate < nowDate) isOverdue=true;
+    if(!isDone && r.dueDate && r.dueDate < nowDate) isOverdue=true; // date-based and 'both' both check
     var rowStyle=isOverdue?'':'';
     var rowClass=isOverdue?' overdue':'';
     if(isDone) rowStyle='opacity:0.5;border-left:3px solid var(--success)';
@@ -786,7 +786,7 @@ function renderReminderList(vid, items, rawO){
       : `<button class="btn-xs btn-ghost" onclick="event.stopPropagation();window.toggleReminder('${esc(vid)}','${esc(r.id)}',${r.enabled!==false})">${r.enabled===false?'Resume':'Pause'}</button>`;
     return `<div class="item${rowClass}" data-rid="${esc(r.id)}" style="cursor:pointer;${rowStyle}">
 <div class="item-left"><div class="item-name">${esc(r.label)}${overdueBadge}${doneBadge}${r.enabled===false?' <span style="color:var(--muted);font-size:0.68rem">(paused)</span>':''}</div>
-<div class="item-meta">${r.dueType==='odo'?'Due at '+toNum(r.dueOdo).toLocaleString()+' km':r.dueDate||''}${r.interval?' · Every '+r.interval:''}${r.refLabel?'<br><span style="color:var(--muted);font-size:0.65rem">'+esc(r.refLabel)+'</span>':''}${r.desc?' · '+esc(r.desc):''}</div></div>
+<div class="item-meta">${r.dueType==='odo'?'Due at '+toNum(r.dueOdo).toLocaleString()+' km':(r.dueType==='both'?('Due: '+(r.dueDate||'')+' · '+toNum(r.dueOdo||0).toLocaleString()+' km'):r.dueDate||'')}${r.interval?' · Every '+r.interval:''}${r.refLabel?'<br><span style="color:var(--muted);font-size:0.65rem">'+esc(r.refLabel)+'</span>':''}${r.desc?' · '+esc(r.desc):''}</div></div>
 <div class="item-amount">${btns}</div></div>`;
   }).join(''):'<div class="item"><div class="item-left"><div class="item-meta">No reminders &mdash; tap + to add</div></div></div>';
   // Click item → edit
@@ -845,8 +845,13 @@ function showReminderForm(mode, rid, data, ctx){
     // Edit: pre-fill from existing reminder data
     $('rem-label').value=data.label||'';
     $('rem-type').value=data.dueType||'date';
+    // Pre-fill interval fields (can't recover original, use defaults)
     if(data.dueType==='odo'){
-      $('rem-interval-odo').value=10000; // won't know original interval
+      $('rem-interval-odo').value=10000;
+    } else if(data.dueType==='both'){
+      $('rem-interval-val').value=12;
+      $('rem-interval-unit').value='months';
+      $('rem-interval-odo').value=10000;
     } else {
       $('rem-interval-val').value=12;
       $('rem-interval-unit').value='months';
@@ -897,8 +902,8 @@ $('rem-interval-odo').addEventListener('input',updateRemDuePreview);
 
 function updateRemFormFields(){
   const typ=$('rem-type').value;
-  $('rem-interval-field').classList.toggle('hidden',typ!=='date');
-  $('rem-odo-interval-field').classList.toggle('hidden',typ!=='odo');
+  $('rem-interval-field').classList.toggle('hidden',typ!=='date'&&typ!=='both');
+  $('rem-odo-interval-field').classList.toggle('hidden',typ!=='odo'&&typ!=='both');
 }
 
 function updateRemDuePreview(){
@@ -909,15 +914,25 @@ function updateRemDuePreview(){
     const val=parseInt($('rem-interval-val').value)||12;
     const unit=$('rem-interval-unit').value;
     const months=unit==='years'?val*12:val;
-    // Base date from context (record date) or today
     const baseDate=ctx&&ctx.date?new Date(ctx.date):new Date();
     const due=new Date(baseDate); due.setMonth(due.getMonth()+months);
     el.textContent='Due: '+fmtDate(due);
-  } else {
+  } else if(typ==='odo'){
     const interval=parseInt($('rem-interval-odo').value)||10000;
     const baseOdo=ctx&&ctx.odo?ctx.odo:0;
     const dueOdo=baseOdo+interval;
     el.textContent='Due at: '+dueOdo.toLocaleString()+' km';
+  } else {
+    // 'both' — show both previews
+    const val=parseInt($('rem-interval-val').value)||12;
+    const unit=$('rem-interval-unit').value;
+    const months=unit==='years'?val*12:val;
+    const baseDate=ctx&&ctx.date?new Date(ctx.date):new Date();
+    const due=new Date(baseDate); due.setMonth(due.getMonth()+months);
+    const interval=parseInt($('rem-interval-odo').value)||10000;
+    const baseOdo=ctx&&ctx.odo?ctx.odo:0;
+    const dueOdo=baseOdo+interval;
+    el.textContent='Due: '+fmtDate(due)+' · '+dueOdo.toLocaleString()+' km (whichever first)';
   }
 }
 
@@ -950,14 +965,15 @@ $('btn-save-reminder').addEventListener('click',()=>{
   const typ=$('rem-type').value;
   let dueDate=null, dueOdo=null;
   const ctx=window._remCtx;
-  if(typ==='date'){
+  if(typ==='date'||typ==='both'){
     const val=parseInt($('rem-interval-val').value)||12;
     const unit=$('rem-interval-unit').value;
     const months=unit==='years'?val*12:val;
     const baseDate=ctx&&ctx.date?new Date(ctx.date):new Date();
     const due=new Date(baseDate); due.setMonth(due.getMonth()+months);
     dueDate=fmtDate(due);
-  } else {
+  }
+  if(typ==='odo'||typ==='both'){
     const interval=parseInt($('rem-interval-odo').value)||10000;
     const baseOdo=ctx&&ctx.odo?ctx.odo:0;
     dueOdo=baseOdo+interval;
@@ -969,7 +985,7 @@ $('btn-save-reminder').addEventListener('click',()=>{
   if(ctx){
     rec.refLabel=ctx.refLabel||'';
     rec.refDetail=ctx.refDetail||'';
-    rec.interval=(typ==='date'?($('rem-interval-val').value+' '+$('rem-interval-unit').value):($('rem-interval-odo').value+' km'));
+    rec.interval=(typ==='date'?($('rem-interval-val').value+' '+$('rem-interval-unit').value):(typ==='odo'?($('rem-interval-odo').value+' km'):($('rem-interval-val').value+' '+$('rem-interval-unit').value+' / '+$('rem-interval-odo').value+' km')));
   }
   if(window._editingReminderId){
     remindRef(activeVehicle).child(window._editingReminderId).update(rec).then(()=>{
