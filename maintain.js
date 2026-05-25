@@ -466,6 +466,7 @@ $('btn-add-record').addEventListener('click',()=>{
   else if(tab==='maintenance' && settings.modules.service){ resetMaintenanceForm(); showScreen('add-maintenance-screen'); }
   else if(tab==='expenses'){ resetExpenseForm(); showScreen('add-expense-screen'); }
   else if(tab==='trips'){ resetTripForm(); showScreen('add-trip-screen'); }
+  else if(tab==='reminders'){ showReminderForm(); }
 });
 
 /* ─── VEHICLE FORM ─── */
