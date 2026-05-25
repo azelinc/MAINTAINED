@@ -363,7 +363,7 @@ function computeAllInCostPerKm(vid){
     const days=earliestDate?Math.max(1,Math.ceil((now()-new Date(earliestDate))/86400000)):1;
     const months=Math.max(0.5, days/30);
     $('stat-costmonth').textContent=totalCost>0?fmtMoney(totalCost/months):'—';
-  });
+  }).catch(e=>console.log('computeAllInCostPerKm error:',e));
 }
 
 /* ─── TABS ─── */
