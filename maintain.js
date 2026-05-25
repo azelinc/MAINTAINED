@@ -23,7 +23,7 @@ let currentUser = null;
 let authReady = false;
 let activeVehicle = null;   // vehicle id
 let editingRecord = null;   // { type, vehicleId, recordId }
-let settings = { units:'metric', currency:'RM', modules:{fuel:true,service:true,expenses:true,trips:true} };
+let settings = { units:'metric', currency:'RM', modules:{fuel:true,service:true,expenses:true,trips:true,reminders:true} };
 let _vehCallback = null;
 
 /* ─── HELPERS ─── */
@@ -31,6 +31,7 @@ function $(id){ return document.getElementById(id); }
 function now(){ return new Date(); }
 function fmtDate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function fmtMoney(n,sym){ const s=sym||settings.currency||'RM'; return s+' '+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtMoneyW(n,sym){ const s=sym||settings.currency||'RM'; return s+' '+n.toLocaleString('en-US',{maximumFractionDigits:0}); }
 function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 function toNum(v){ const n=parseFloat(v); return isNaN(n)?0:n; }
 function showScreen(id){
@@ -38,6 +39,10 @@ function showScreen(id){
   $(id).classList.add('active');
 }
 function todayInput(){ $('fu-date').value=fmtDate(now()); $('mt-date').value=fmtDate(now()); $('ex-date').value=fmtDate(now()); $('tr-date').value=fmtDate(now()); }
+
+const VEHC_AUTO=['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899'];
+const VEHC_NAME={red:'#ef4444',orange:'#f97316',yellow:'#eab308',white:'#e5e7eb',silver:'#9ca3af',blue:'#3b82f6',black:'#6b7280'};
+function resolveVidColors(vehicles,vids){ const r={}; const taken=new Set(); vids.forEach(vid=>{ const c=vehicles[vid]&&vehicles[vid].color; if(c&&VEHC_NAME[c]){ if(!taken.has(VEHC_NAME[c])){r[vid]=VEHC_NAME[c];taken.add(VEHC_NAME[c]);}else{r[vid]=null;} }else{r[vid]=null;} }); let ai=0; vids.forEach(vid=>{ if(r[vid]) return; while(taken.has(VEHC_AUTO[ai%VEHC_AUTO.length])) ai++; r[vid]=VEHC_AUTO[ai%VEHC_AUTO.length]; taken.add(VEHC_AUTO[ai%VEHC_AUTO.length]); ai++; }); return r; }
 
 /* --- MODULE TOGGLE --- */
 function applyModules(){
@@ -75,7 +80,7 @@ function applyModules(){
   }
 }
 function setModule(key,on){
-  if(!settings.modules) settings.modules={fuel:true,service:true,expenses:true,trips:true};
+  if(!settings.modules) settings.modules={fuel:true,service:true,expenses:true,trips:true,reminders:true};
   settings.modules[key]=!!on;
   saveSettings(currentUser.uid,'modules',settings.modules);
   applyModules();
@@ -83,8 +88,8 @@ function setModule(key,on){
   if(activeVehicle && $('vehicle-screen').classList.contains('active')) loadVehicleTabs(activeVehicle);
 }
 function normalizeModules(){
-  if(!settings.modules) settings.modules={fuel:true,service:true,expenses:true,trips:true};
-  ['fuel','service','expenses','trips'].forEach(k=>{ if(settings.modules[k]===undefined) settings.modules[k]=true; });
+  if(!settings.modules) settings.modules={fuel:true,service:true,expenses:true,trips:true,reminders:true};
+  ['fuel','service','expenses','trips','reminders'].forEach(k=>{ if(settings.modules[k]===undefined) settings.modules[k]=true; });
 }
 
 /* ─── REF BUILDERS ─── */
@@ -94,6 +99,7 @@ function fillRef(vid){ return uRef('fillups/'+vid); }
 function maintRef(vid){ return uRef('maintenance/'+vid); }
 function exp2Ref(vid){ return uRef('expenses/'+vid); }
 function tripRef(vid){ return uRef('trips/'+vid); }
+function remindRef(vid){ return uRef('reminders/'+vid); }
 
 /* ─── LISTENERS ─── */
 function attachListeners(uid){
@@ -164,6 +170,7 @@ function renderDash(){
   vRef().once('value').then(snap=>{
     const vehicles=snap.val()||{};
     const vids=Object.keys(vehicles);
+    window.vehicles_cache=vehicles;
     // Vehicle cards with placeholder cost stats
     const container=$('vehicle-list');
     let h='';
@@ -185,17 +192,15 @@ function renderDash(){
           Object.values(svcs).forEach(o=>{ if((o.date||'').startsWith(yearPrefix)) svcTotal+=toNum(o.totalCost); });
           Object.values(exps).forEach(o=>{ if((o.date||'').startsWith(yearPrefix)) expTotal+=toNum(o.amount); });
         });
-        if(settings.modules.fuel) $('hero-fuel').textContent = fmtMoney(fuelTotal);
-        if(settings.modules.service) $('hero-service').textContent = fmtMoney(svcTotal);
-        if(settings.modules.expenses) $('hero-expense').textContent = fmtMoney(expTotal);
+        if(settings.modules.fuel) $('hero-fuel').textContent = fmtMoneyW(fuelTotal);
+        if(settings.modules.service) $('hero-service').textContent = fmtMoneyW(svcTotal);
+        if(settings.modules.expenses) $('hero-expense').textContent = fmtMoneyW(expTotal);
       });
     }
     // Recent global items (all types interleaved, latest 15)
     const mods=settings.modules||{};
     if(mods.fuel || mods.service || mods.expenses || mods.trips){
-    const VEHC=['#3b82f6','#10b981','#f59e0b','#ef4444'];
-    const vidColors={};
-    vids.forEach((vid,i)=>vidColors[vid]=VEHC[i%VEHC.length]);
+    const vidColors=resolveVidColors(vehicles,vids);
     const recentPromises = vids.map(vid=>Promise.all([
       mods.fuel ? fillRef(vid).once('value').then(s=>s.val()) : Promise.resolve(null),
       mods.service ? maintRef(vid).once('value').then(s=>s.val()) : Promise.resolve(null),
@@ -203,16 +208,17 @@ function renderDash(){
       tripRef(vid).once('value').then(s=>s.val())
     ]));
     Promise.all(recentPromises).then(results=>{
-      let items=[];
+      let allItems=[];
       results.forEach(([fills,svcs,exps,trips],i)=>{
-        const vid=vids[i]; const color=vidColors[vid]||VEHC[0];
-        if(fills) Object.entries(fills).forEach(([id,o])=>items.push({t:'Fuel',id,vid,color,date:o.date||'',label:`Fuel · ${(toNum(o.liters)).toFixed(2)}L`,amount:toNum(o.totalCost),meta:`${esc(vehicles[vid]?.plate||vid)} @ ${toNum(o.odometer).toLocaleString()} km`}));
-        if(svcs) Object.entries(svcs).forEach(([id,o])=>items.push({t:'Service',id,vid,color,date:o.date||'',label:o.items||'Service',amount:toNum(o.totalCost),meta:`${esc(vehicles[vid]?.plate||vid)} · ${esc(o.shop||'')}`}));
-        if(exps) Object.entries(exps).forEach(([id,o])=>items.push({t:'Expense',id,vid,color,date:o.date||'',label:`${o.category||'Expense'} · ${o.description||''}`,amount:toNum(o.amount),meta:esc(vehicles[vid]?.plate||vid)}));
-        if(trips) Object.entries(trips).forEach(([id,o])=>items.push({t:'Trip',id,vid,color,date:o.date||'',label:`Trip · ${o.purpose||''}`,amount:0,meta:`${esc(vehicles[vid]?.plate||vid)} · ${toNum(o.distance).toLocaleString()} km`}));
+        const vid=vids[i]; const color=vidColors[vid]||'#3b82f6';
+        if(fills) Object.entries(fills).forEach(([id,o])=>allItems.push({t:'Fuel',id,vid,color,date:o.date||'',label:`Fuel · ${(toNum(o.liters)).toFixed(2)}L`,amount:toNum(o.totalCost),meta:`${esc(vehicles[vid]?.plate||vid)} @ ${toNum(o.odometer).toLocaleString()} km`}));
+        if(svcs) Object.entries(svcs).forEach(([id,o])=>allItems.push({t:'Service',id,vid,color,date:o.date||'',label:o.items||'Service',amount:toNum(o.totalCost),meta:`${esc(vehicles[vid]?.plate||vid)} · ${esc(o.shop||'')}`}));
+        if(exps) Object.entries(exps).forEach(([id,o])=>allItems.push({t:'Expense',id,vid,color,date:o.date||'',label:`${o.category||'Expense'} · ${o.description||''}`,amount:toNum(o.amount),meta:esc(vehicles[vid]?.plate||vid)}));
+        if(trips) Object.entries(trips).forEach(([id,o])=>allItems.push({t:'Trip',id,vid,color,date:o.date||'',label:`Trip · ${o.purpose||''}`,amount:0,meta:`${esc(vehicles[vid]?.plate||vid)} · ${toNum(o.distance).toLocaleString()} km`}));
       });
-      items.sort((a,b)=>b.date.localeCompare(a.date));
-      $('recent-list').innerHTML=items.slice(0,15).map(it=>`<div class="item" style="border-left:3px solid ${it.color}"><div class="item-left"><div class="item-name"><span class="veh-chip" style="background:${it.color}22;color:${it.color};font-size:0.68rem;font-weight:600;padding:1px 6px;border-radius:3px;margin-right:4px">${esc(vehicles[it.vid]?.plate||it.vid)}</span>${esc(it.label)}</div><div class="item-meta">${esc(it.date)} · ${esc(it.meta)}</div></div><div class="item-amount">${it.amount?fmtMoney(it.amount):''}</div></div>`).join('') || '<div class="item"><div class="item-left"><div class="item-meta">No records yet</div></div></div>';
+      allItems.sort((a,b)=>b.date.localeCompare(a.date));
+      window._recentCache=allItems;
+      renderRecentSlice(0);(it=>`<div class="item" style="border-left:3px solid ${it.color}"><div class="item-left"><div class="item-name"><span class="veh-chip" style="background:${it.color}22;color:${it.color};font-size:0.68rem;font-weight:600;padding:1px 6px;border-radius:3px;margin-right:4px">${esc(vehicles[it.vid]?.plate||it.vid)}</span>${esc(it.label)}</div><div class="item-meta">${esc(it.date)} · ${esc(it.meta)}</div></div><div class="item-amount">${it.amount?fmtMoney(it.amount):''}</div></div>`).join('') || '<div class="item"><div class="item-left"><div class="item-meta">No records yet</div></div></div>';
     });}
     // All-time stats: total cost, cost/month, cost/km
     if(vids.length){
@@ -251,6 +257,9 @@ function renderDash(){
           }
         });
         $('alltime-cost').textContent = fmtMoney(totalCost);
+        let svcExpTotal=0;
+        results.forEach(([fills,svcs,exps,trips],i)=>{ Object.values(svcs).forEach(o=>{ svcExpTotal+=toNum(o.totalCost); }); Object.values(exps).forEach(o=>{ svcExpTotal+=toNum(o.amount); }); });
+        $('alltime-svcexp').textContent = fmtMoney(svcExpTotal);
         // Sum each vehicle's own cost/month for the global figure
         let fleetMonthly=0;
         results.forEach(([fills,svcs,exps,trips],i)=>{
@@ -267,8 +276,20 @@ function renderDash(){
       });
     }
     applyModules();
+    loadRemindersTicker();
   });
 }
+
+function renderRecentSlice(start){
+  const el=$('recent-list');
+  if(!window._recentCache||!window._recentCache.length){ el.innerHTML='<div class="item"><div class="item-left"><div class="item-meta">No records yet</div></div></div>'; return; }
+  const slice=window._recentCache.slice(start,start+10);
+  let h=slice.map(it=>`<div class="item" style="border-left:3px solid ${it.color}"><div class="item-left"><div class="item-name"><span class="veh-chip" style="background:${it.color}22;color:${it.color};font-size:0.68rem;font-weight:600;padding:1px 6px;border-radius:3px;margin-right:4px">${esc(window.vehicles_cache?.[it.vid]?.plate||it.vid)}</span>${esc(it.label)}</div><div class="item-meta">${esc(it.date)} &middot; ${esc(it.meta)}</div></div><div class="item-amount">${it.amount?fmtMoney(it.amount):''}</div></div>`).join('');
+  if(start===0) el.innerHTML=h;
+  else el.innerHTML+=h;
+  if(start+10<window._recentCache.length) el.innerHTML+=`<button class="load-more-btn" onclick="renderRecentSlice(${start+10})">Show more&hellip; (${window._recentCache.length-(start+10)} remaining)</button>`;
+}
+window.renderRecentSlice=renderRecentSlice;
 
 /* ─── VEHICLE ─── */
 function openVehicle(vid, v){
@@ -311,6 +332,8 @@ function loadVehicleTabs(vid){
   }
   // RM/km + Cost/month from all costs (always computed)
   computeAllInCostPerKm(vid);
+  // Total Svc+Exp stat
+  Promise.all([maintRef(vid).once('value').then(s=>s.val()||{}),exp2Ref(vid).once('value').then(s=>s.val()||{})]).then(([svcs,exps])=>{ let t=0; Object.values(svcs).forEach(o=>{ t+=toNum(o.totalCost); }); Object.values(exps).forEach(o=>{ t+=toNum(o.amount); }); var sc=$('stat-totalcost'); if(sc) sc.textContent=fmtMoney(t); });
   // Cost/month from maintenance (quick, always-on backup)
   maintRef(vid).once('value').then(s=>{
     const arr=Object.values(s.val()||{}).filter(o=>o.totalCost>0);
@@ -359,7 +382,10 @@ function loadVehicleTabs(vid){
     let items=Object.entries(o).map(([id,r])=>({id,...r})).sort((a,b)=> (b.date||'').localeCompare(a.date||''));
     $('trip-list').innerHTML = items.length ? items.map(r=>`<div class="item" data-tid="${esc(r.id)}"><div class="item-left"><div class="item-name">${esc(r.purpose||'Trip')}</div><div class="item-meta">${fmtDate2(r.date)} · ${toNum(r.startOdo).toLocaleString()} → ${toNum(r.endOdo).toLocaleString()} km</div></div><div class="item-amount">${toNum(r.distance).toLocaleString()} km</div></div>`).join('') : '<div class="item"><div class="item-left"><div class="item-meta">No trips</div></div></div>';
     $('trip-list').querySelectorAll('.item[data-tid]').forEach(el=>el.addEventListener('click',()=>editTrip(vid,el.dataset.tid)));
-  });
+    });
+  // Reminders tab
+  if(settings.modules.reminders) loadVehicleReminders(vid);
+  else { var rl=$('reminder-list'); if(rl) rl.innerHTML='<div class="item"><div class="item-left"><div class="item-meta">Reminders module disabled</div></div></div>'; }
 }
 
 function fmtDate2(d){ return d ? d : ''; }
@@ -597,6 +623,80 @@ function editTrip(vid, tid){
   });
 }
 
+
+/* Reminders */
+function loadRemindersTicker(){
+  if(!settings.modules.reminders){ $('reminder-ticker').classList.add('hidden'); return; }
+  vRef().once('value').then(vSnap=>{
+    var vehicles=vSnap.val()||{};
+    var vids=Object.keys(vehicles);
+    Promise.all(vids.map(vid=>remindRef(vid).once('value').then(s=>s.val()||{}))).then(results=>{
+      var entries=[];
+      results.forEach((reminders,i)=>{
+        var vid=vids[i]; var v=vehicles[vid];
+        Object.values(reminders).forEach(r=>{
+          if(r.enabled===false) return;
+          if(r.dueType==='date' && r.dueDate){
+            var due=new Date(r.dueDate);
+            var daysRemaining=Math.ceil((due-now())/86400000);
+            if(daysRemaining<=90) entries.push({vid:vid,plate:v.plate||vid,dueLabel:r.label+' ('+(daysRemaining>0?'in '+daysRemaining+'d':'Overdue')+')', urgency:daysRemaining});
+          }
+        });
+      });
+      entries.sort((a,b)=>a.urgency-b.urgency);
+      var ticker=$('reminder-ticker');
+      if(entries.length){
+        ticker.classList.remove('hidden');
+        $('reminder-ticker-inner').textContent=' ⚠ '+entries.map(e=>e.plate+': '+e.dueLabel).join('  ·  ')+'  ·  ';
+      } else { ticker.classList.add('hidden'); }
+    });
+  });
+}
+
+function loadVehicleReminders(vid){
+  remindRef(vid).once('value').then(s=>{
+    var o=s.val()||{};
+    var items=Object.entries(o).map(function(e){ return Object.assign({id:e[0]},e[1]); });
+    items.sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));
+    $('reminder-list').innerHTML=items.length?items.map(r=>`<div class="item" data-rid="${esc(r.id)}">
+<div class="item-left"><div class="item-name">${esc(r.label)}${r.enabled===false?' <span style="color:var(--muted);font-size:0.68rem">(paused)</span>':''}</div>
+<div class="item-meta">${r.dueType==='odo'?'Due at '+toNum(r.dueOdo).toLocaleString()+' km':r.dueDate||''} &middot; ${r.desc||''}</div></div>
+<div class="item-amount">
+  <button class="btn-xs btn-ghost" onclick="window.toggleReminder('${esc(vid)}','${esc(r.id)}',${r.enabled!==false})">${r.enabled===false?'Resume':'Pause'}</button>
+  <button class="btn-xs btn-danger" onclick="window.deleteReminder('${esc(vid)}','${esc(r.id)}')">&times;</button>
+</div></div>`).join(''):'<div class="item"><div class="item-left"><div class="item-meta">No reminders &mdash; tap + to add</div></div></div>';
+  });
+}
+
+window.toggleReminder=function(vid,rid,curEnabled){
+  remindRef(vid).child(rid).update({enabled:!curEnabled}).then(()=>loadVehicleReminders(vid));
+};
+
+window.deleteReminder=function(vid,rid){
+  if(!confirm('Delete this reminder?')) return;
+  remindRef(vid).child(rid).remove().then(()=>loadVehicleReminders(vid));
+};
+
+function showReminderForm(){
+  if(!activeVehicle) return;
+  var label=prompt('Reminder label (e.g. Renew Road Tax):');
+  if(!label) return;
+  var type=confirm('Date-based? (OK=date, Cancel=odometer)')?'date':'odo';
+  var dueDate=null, dueOdo=null, desc='';
+  if(type==='date'){
+    var d=prompt('Due date (YYYY-MM-DD):');
+    if(!d) return;
+    dueDate=d;
+  } else {
+    var o=prompt('Due odometer (km):');
+    if(!o) return;
+    dueOdo=parseInt(o);
+  }
+  desc=prompt('Optional note:')||'';
+  var rec={label:label,dueType:type,dueDate:dueDate,dueOdo:dueOdo,desc:desc,enabled:true,createdAt:firebase.database.ServerValue.TIMESTAMP};
+  remindRef(activeVehicle).push().set(rec).then(()=>{ loadVehicleReminders(activeVehicle); });
+}
+
 /* ─── SETTINGS ─── */
 $('btn-settings').addEventListener('click',openSettings);
 $('btn-settings-back').addEventListener('click',()=>showScreen('dash-screen'));
@@ -605,6 +705,17 @@ function openSettings(){
   $('set-my-uid').textContent=currentUser.uid||'—'; 
   $('set-units').value=settings.units||'metric';
   $('set-currency').value=settings.currency||'RM';
+  // Vehicle color pickers
+  vRef().once('value').then(snap=>{
+    var vehicles=snap.val()||{};
+    var vids=Object.keys(vehicles);
+    var h=vids.map(vid=>{
+      var v=vehicles[vid]; var current=v.color||'';
+      var opts=['red','orange','yellow','white','silver','blue','black'].map(c=>'<option value="'+c+'" '+(current===c?'selected':'')+'>'+c+'</option>').join('');
+      return '<div class="inline-field" style="margin-bottom:6px"><span style="flex:1;font-size:0.85rem">'+esc(v.plate||vid)+' '+esc(v.make||'')+' '+esc(v.model||'')+'</span><select onchange="setVehicleColor(\''+esc(vid)+'\',this.value)" style="width:100px">'+opts+'</select></div>';
+    }).join('');
+    $('veh-color-list').innerHTML=h||'No vehicles';
+  });
   // Check if owner linked
   uRef('settings').once('value').then(s=>{
     const sets=s.val()||{};
@@ -623,7 +734,8 @@ function openSettings(){
       else { $('approved-panel').classList.add('hidden'); }
     });
   });
-  const m=settings.modules||{fuel:true,service:true}; $('set-mod-fuel').checked=!!m.fuel; $('set-mod-service').checked=!!m.service;
+  var m=settings.modules||{fuel:true,service:true}; $('set-mod-fuel').checked=!!m.fuel; $('set-mod-service').checked=!!m.service;
+  $('set-mod-reminders').checked=!!m.reminders;
   showScreen('settings-screen'); 
 }
 
@@ -676,6 +788,8 @@ $('set-units').addEventListener('change',()=>{ settings.units=$('set-units').val
 $('set-currency').addEventListener('change',()=>{ settings.currency=$('set-currency').value; saveSettings(currentUser.uid,'currency',settings.currency); });
 $('set-mod-fuel').addEventListener('change',()=>{ setModule('fuel',$('set-mod-fuel').checked); });
 $('set-mod-service').addEventListener('change',()=>{ setModule('service',$('set-mod-service').checked); });
+$('set-mod-reminders').addEventListener('change',()=>{ setModule('reminders',$('set-mod-reminders').checked); });
+window.setVehicleColor=function(vid,color){ vRef().child(vid).update({color}).then(()=>renderDash()); };
 
 /* register service worker */
 if('serviceWorker' in navigator){ window.addEventListener('load',()=>{ navigator.serviceWorker.register('sw.js').catch(err=>console.log('SW fail',err)); }); }

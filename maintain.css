@@ -50,6 +50,7 @@ html, body {
 .btn-primary:active { transform: scale(0.98); }
 .btn-lg { padding: 16px 24px; font-size: 1.1rem; }
 .btn-sm { padding: 8px 16px; font-size: 0.85rem; width: auto; }
+.btn-xs { padding: 4px 10px; font-size: 0.72rem; width: auto; border-radius: 6px; }
 .btn-ghost {
   background: transparent; color: var(--muted); border: 1px solid var(--border);
   padding: 8px 16px; border-radius: var(--radius); font-size: 0.85rem; cursor: pointer;
@@ -75,11 +76,23 @@ html, body {
   flex: 1; background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 16px;
 }
-.hero-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
-.hero-num { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.5px; }
+.hero-num { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.5px; }
+.hero-label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
 
 .section { padding: 0 20px 20px; }
 .section-title { font-size: 0.85rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+
+/* TICKER */
+.reminder-ticker {
+  margin: 4px 16px 0; padding: 6px 10px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  overflow: hidden; white-space: nowrap; font-size: 0.72rem; color: var(--warn);
+}
+.reminder-ticker-inner { display: inline-block; animation: ticker-scroll 20s linear infinite; }
+@keyframes ticker-scroll {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
 
 /* VEHICLE GRID */
 .vehicle-grid { display: flex; flex-direction: column; gap: 10px; }
@@ -90,16 +103,16 @@ html, body {
 .vehicle-card:hover { border-color: var(--accent); }
 .vc-top { display: flex; align-items: center; gap: 12px; }
 .vc-type-badge {
-  width: 36px; height: 36px; border-radius: 50%; background: var(--surface-2);
+  width: 36px; height: 36px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0;
 }
 .vc-info { flex: 1; min-width: 0; }
 .vehicle-name { font-weight: 600; font-size: 1rem; }
 .vehicle-plate { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
-.vc-costs { display: flex; gap: 16px; padding-top: 4px; }
+.vc-costs { display: flex; gap: 16px; padding-top: 4px; flex-wrap: wrap; }
 .vc-stat { display: flex; align-items: baseline; gap: 2px; }
-.vc-stat-val { font-weight: 700; font-size: 0.95rem; color: var(--accent); }
-.vc-stat-label { font-size: 0.7rem; color: var(--muted); }
+.vc-stat-val { font-weight: 700; font-size: 0.9rem; color: var(--accent); }
+.vc-stat-label { font-size: 0.68rem; color: var(--muted); }
 
 /* LIST */
 .list { display: flex; flex-direction: column; gap: 8px; }
@@ -111,6 +124,13 @@ html, body {
 .item-name { font-weight: 500; font-size: 0.95rem; }
 .item-meta { font-size: 0.75rem; color: var(--muted); }
 .item-amount { font-weight: 700; font-size: 1rem; }
+
+.load-more-btn {
+  display: block; width: 100%; padding: 10px; margin-top: 4px;
+  background: var(--surface); border: 1px dashed var(--border); border-radius: var(--radius);
+  color: var(--muted); font-size: 0.82rem; cursor: pointer; text-align: center;
+}
+.load-more-btn:hover { border-color: var(--accent); color: var(--accent); }
 
 /* FAB */
 .fab {
@@ -182,21 +202,21 @@ html, body {
 .stat-num { font-size: 1.3rem; font-weight: 700; }
 
 /* QUICK ACTIONS */
-.quick-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 16px; }
+.quick-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 16px; }
 .qa-btn {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-  color: var(--text); padding: 12px; font-size: 0.85rem; cursor: pointer; text-align: center;
+  color: var(--text); padding: 10px; font-size: 0.8rem; cursor: pointer; text-align: center;
 }
 .qa-btn:active { background: var(--accent); color: #fff; }
 
 /* ALLTIME STATS */
-.alltime-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 0 16px 12px; }
+.alltime-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 0 12px 12px; }
 .alltime-card {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 10px 8px; text-align: center;
+  padding: 8px 6px; text-align: center;
 }
-.alltime-label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 3px; }
-.alltime-num { font-size: 0.95rem; font-weight: 700; color: var(--accent); }
+.alltime-label { font-size: 0.6rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.2px; margin-bottom: 2px; }
+.alltime-num { font-size: 0.85rem; font-weight: 700; color: var(--accent); }
 
 /* SETTINGS */
 .settings-body { padding: 16px 20px 80px; max-width: 480px; margin: 0 auto; }
@@ -222,3 +242,5 @@ html, body {
 .switch input:checked + .slider:before { transform: translateX(20px); }
 
 .row { display: flex; align-items: center; gap: 10px; }
+.inline-field { display: flex; align-items: center; gap: 10px; }
+.inline-field input { width: auto; }

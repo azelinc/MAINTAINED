@@ -43,23 +43,26 @@
     <div class="hero">
       <div class="hero-block" id="hero-fuel-block" style="cursor:pointer">
         <div class="hero-label">Fuel This Month</div>
-        <div class="hero-num" id="hero-fuel">RM 0.00</div>
+        <div class="hero-num" id="hero-fuel">RM 0</div>
       </div>
       <div class="hero-block" id="hero-service-block" style="cursor:pointer">
         <div class="hero-label">Service This Year</div>
-        <div class="hero-num" id="hero-service">RM 0.00</div>
+        <div class="hero-num" id="hero-service">RM 0</div>
       </div>
       <div class="hero-block" id="hero-expense-block" style="cursor:pointer">
         <div class="hero-label">Expenses This Year</div>
-        <div class="hero-num" id="hero-expense">RM 0.00</div>
+        <div class="hero-num" id="hero-expense">RM 0</div>
       </div>
     </div>
 
     <div class="alltime-row" id="alltime-row">
       <div class="alltime-card"><div class="alltime-label">All-Time Cost</div><div class="alltime-num" id="alltime-cost">RM 0.00</div></div>
+      <div class="alltime-card"><div class="alltime-label">Total Svc+Exp</div><div class="alltime-num" id="alltime-svcexp">—</div></div>
       <div class="alltime-card"><div class="alltime-label">Cost / Month</div><div class="alltime-num" id="alltime-cpd">—</div></div>
       <div class="alltime-card"><div class="alltime-label">Cost / km</div><div class="alltime-num" id="alltime-cpkm">—</div></div>
     </div>
+
+    <div id="reminder-ticker" class="reminder-ticker hidden"><div class="reminder-ticker-inner" id="reminder-ticker-inner"></div></div>
 
     <div class="section">
       <div class="section-title">My Vehicles</div>
@@ -89,6 +92,7 @@
       <button class="tab-btn" data-tab="maintenance">Service</button>
       <button class="tab-btn" data-tab="expenses">Expenses</button>
       <button class="tab-btn" data-tab="trips">Trips</button>
+      <button class="tab-btn" data-tab="reminders">Reminders</button>
     </div>
     <div class="tab-panels">
       <div class="tab-panel active" id="tab-stats">
@@ -96,6 +100,7 @@
           <div class="stat-card" id="stat-card-fc"><div class="stat-label">L/100km</div><div class="stat-num" id="stat-fc">—</div></div>
           <div class="stat-card" id="stat-card-costkm"><div class="stat-label">Cost / km</div><div class="stat-num" id="stat-costkm">—</div></div>
           <div class="stat-card" id="stat-card-costmonth"><div class="stat-label">Cost / Month</div><div class="stat-num" id="stat-costmonth">—</div></div>
+          <div class="stat-card" id="stat-card-totalcost"><div class="stat-label">Total Svc+Exp</div><div class="stat-num" id="stat-totalcost">—</div></div>
           <div class="stat-card" id="stat-card-totalfuel"><div class="stat-label">Total Fuel</div><div class="stat-num" id="stat-totalfuel">—</div></div>
           <div class="stat-card" id="stat-card-lastsvc"><div class="stat-label">Last Service</div><div class="stat-num" id="stat-lastsvc">—</div></div>
         </div>
@@ -110,6 +115,7 @@
       <div class="tab-panel" id="tab-maintenance"><div id="maintenance-list" class="list"></div></div>
       <div class="tab-panel" id="tab-expenses"><div id="expense-list" class="list"></div></div>
       <div class="tab-panel" id="tab-trips"><div id="trip-list" class="list"></div></div>
+      <div class="tab-panel" id="tab-reminders"><div id="reminder-list" class="list"></div></div>
     </div>
     <button id="btn-add-record" class="fab">+</button>
   </section>
@@ -280,6 +286,14 @@
       <div class="field switch-row">
         <label>Service Module</label>
         <label class="switch"><input type="checkbox" id="set-mod-service" checked><span class="slider"></span></label>
+      </div>
+      <div class="field switch-row">
+        <label>Reminders Module</label>
+        <label class="switch"><input type="checkbox" id="set-mod-reminders" checked><span class="slider"></span></label>
+      </div>
+      <div class="field" id="veh-colors-section">
+        <label>Vehicle Colors</label>
+        <div id="veh-color-list"></div>
       </div>
       <div class="field">
         <label>Data</label>
