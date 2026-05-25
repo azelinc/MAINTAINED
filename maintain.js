@@ -209,8 +209,8 @@ function renderDash(){
           Object.values(exps).forEach(o=>{ if((o.date||'').startsWith(yearPrefix)) expTotal+=toNum(o.amount); });
         });
         if(settings.modules.fuel) $('hero-fuel').textContent = fmtMoneyW(fuelTotal);
-        if(settings.modules.service) $('hero-service').textContent = fmtMoneyW(svcTotal);
-        if(settings.modules.expenses) $('hero-expense').textContent = fmtMoneyW(expTotal);
+        if(settings.modules.service) $('hero-service').textContent = 'RM '+fmtMoneyW(svcTotal);
+        if(settings.modules.expenses) $('hero-expense').textContent = 'RM '+fmtMoneyW(expTotal);
       });
     }
     // Recent global items (all types interleaved, latest 15)
