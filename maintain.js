@@ -156,14 +156,13 @@ function renderDash(){
     const vids=Object.keys(vehicles);
     // Vehicle cards
     const container=$('vehicle-list');
-    let h='<button class="vehicle-card" id="btn-new-vehicle" style="justify-content:center;color:var(--muted);border-style:dashed"><span style="font-size:1.2rem;font-weight:700">+ Add Vehicle</span></button>';
+    let h='';
     vids.forEach(id=>{
       const v=vehicles[id]; const odo=toNum(v.odometer);
       h+=`<div class="vehicle-card" data-vid="${esc(id)}"><div><div class="vehicle-name">${esc(v.make||'')} ${esc(v.model||'')} ${esc(v.year||'')}</div><div class="vehicle-plate">${esc(v.plate||'')} · ${esc(v.fuelType||'Petrol')}</div></div><div class="vehicle-km">${odo.toLocaleString()} km</div></div>`;
     });
     container.innerHTML=h;
     container.querySelectorAll('.vehicle-card[data-vid]').forEach(c=>c.addEventListener('click',()=>openVehicle(c.dataset.vid,vehicles[c.dataset.vid])));
-    $('btn-new-vehicle').addEventListener('click',()=>{ showScreen('add-vehicle-screen'); resetVehicleForm(); });
     // Totals across all vehicles (this month fuel, this year service)
     const monthPrefix=fmtDate(now()).slice(0,7);
     const yearPrefix=String(now().getFullYear());
@@ -200,6 +199,38 @@ function renderDash(){
       items.sort((a,b)=>b.date.localeCompare(a.date));
       $('recent-list').innerHTML=items.slice(0,15).map(it=>`<div class="item"><div class="item-left"><div class="item-name">${esc(it.label)}</div><div class="item-meta">${esc(it.date)} · ${esc(it.meta)}</div></div><div class="item-amount">${it.amount?fmtMoney(it.amount):''}</div></div>`).join('') || '<div class="item"><div class="item-left"><div class="item-meta">No records yet</div></div></div>';
     });}
+    // All-time stats: total cost, cost/day, cost/km
+    if(vids.length){
+      const allP = vids.map(vid=>Promise.all([
+        fillRef(vid).once('value').then(s=>s.val()||{}),
+        maintRef(vid).once('value').then(s=>s.val()||{}),
+        exp2Ref(vid).once('value').then(s=>s.val()||{}),
+        tripRef(vid).once('value').then(s=>s.val()||{})
+      ]));
+      Promise.all(allP).then(results=>{
+        let totalCost=0, totalDist=0, earliestDate=null;
+        results.forEach(([fills,svcs,exps,trips])=>{
+          Object.values(fills).forEach(o=>{ totalCost+=toNum(o.totalCost); const d=toNum(o.odometer); if(o.date){ if(!earliestDate||o.date<earliestDate) earliestDate=o.date; } });
+          Object.values(svcs).forEach(o=>{ totalCost+=toNum(o.totalCost); if(o.date){ if(!earliestDate||o.date<earliestDate) earliestDate=o.date; } });
+          Object.values(exps).forEach(o=>{ totalCost+=toNum(o.amount); if(o.date){ if(!earliestDate||o.date<earliestDate) earliestDate=o.date; } });
+          Object.values(trips).forEach(o=>{ totalDist+=toNum(o.distance||o.endOdo-o.startOdo); if(o.date){ if(!earliestDate||o.date<earliestDate) earliestDate=o.date; } });
+        });
+        // Distance from consecutive non-partial fill-ups
+        results.forEach(([fills])=>{
+          const arr=Object.values(fills).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+          for(let i=1;i<arr.length;i++){
+            if(arr[i].partial) continue;
+            const dist=toNum(arr[i].odometer)-toNum(arr[i-1].odometer);
+            if(dist>0) totalDist+=dist;
+          }
+        });
+        $('alltime-cost').textContent = fmtMoney(totalCost);
+        const days = earliestDate ? Math.max(1, Math.ceil((now()-new Date(earliestDate))/86400000)) : 1;
+        $('alltime-cpd').textContent = fmtMoney(totalCost/days);
+        if(totalDist>0) $('alltime-cpkm').textContent = fmtMoney(totalCost/totalDist);
+        else $('alltime-cpkm').textContent = '—';
+      });
+    }
     applyModules();
   });
 }
@@ -481,6 +512,7 @@ function editTrip(vid, tid){
 /* ─── SETTINGS ─── */
 $('btn-settings').addEventListener('click',openSettings);
 $('btn-settings-back').addEventListener('click',()=>showScreen('dash-screen'));
+$('btn-settings-add-vehicle').addEventListener('click',()=>{ showScreen('add-vehicle-screen'); resetVehicleForm(); });
 function openSettings(){ 
   $('set-my-uid').textContent=currentUser.uid||'—'; 
   $('set-units').value=settings.units||'metric';

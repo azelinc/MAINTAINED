@@ -180,6 +180,15 @@ html, body {
 }
 .qa-btn:active { background: var(--accent); color: #fff; }
 
+/* ALLTIME STATS */
+.alltime-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 0 16px 12px; }
+.alltime-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px 8px; text-align: center;
+}
+.alltime-label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 3px; }
+.alltime-num { font-size: 0.95rem; font-weight: 700; color: var(--accent); }
+
 /* SETTINGS */
 .settings-body { padding: 16px 20px 80px; max-width: 480px; margin: 0 auto; }
 .field-hint { font-size: 0.75rem; color: var(--muted); margin-bottom: 8px; }
