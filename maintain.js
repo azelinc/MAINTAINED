@@ -59,10 +59,9 @@ function applyModules(){
   const qFu=$('qa-fillup'); const qMt=$('qa-service');
   if(qFu) qFu.classList.toggle('hidden',!settings.modules.fuel);
   if(qMt) qMt.classList.toggle('hidden',!settings.modules.service);
-  // Stat cards
-  const scFc=$('stat-card-fc'); const scCkm=$('stat-card-costkm'); const scTf=$('stat-card-totalfuel');
+  // Stat cards — only hide pure-fuel stats (L/100km, Total Fuel). RM/km uses all costs.
+  const scFc=$('stat-card-fc'); const scTf=$('stat-card-totalfuel');
   if(scFc) scFc.classList.toggle('hidden',!settings.modules.fuel);
-  if(scCkm) scCkm.classList.toggle('hidden',!settings.modules.fuel);
   if(scTf) scTf.classList.toggle('hidden',!settings.modules.fuel);
   // Re-activate first visible tab if current is hidden
   const visibleTabs=Array.from(document.querySelectorAll('.tab-btn:not(.hidden)'));
@@ -282,13 +281,15 @@ function loadVehicleTabs(vid){
     if(totalDist>0 && totalL>0){
       const lp100 = (totalL/totalDist)*100;
       $('stat-fc').textContent = lp100.toFixed(1);
-      $('stat-costkm').textContent = fmtMoney(totalCost/totalDist);
       $('stat-totalfuel').textContent = totalL.toFixed(1)+' L';
+      $('stat-costkm').textContent = fmtMoney(totalCost/totalDist);
     } else {
-      $('stat-fc').textContent = '—'; $('stat-costkm').textContent = '—'; $('stat-totalfuel').textContent = '—';
+      $('stat-fc').textContent = '—'; $('stat-totalfuel').textContent = '—';
     }
   });
   }
+  // RM/km from all costs (always computed, not just fuel)
+  computeAllInCostPerKm(vid);
   // Last service
   if(settings.modules.service){
   maintRef(vid).once('value').then(s=>{
@@ -332,6 +333,31 @@ function loadVehicleTabs(vid){
 }
 
 function fmtDate2(d){ return d ? d : ''; }
+
+/* Compute RM/km from all cost types (fuel + service + expenses) */
+function computeAllInCostPerKm(vid){
+  Promise.all([
+    fillRef(vid).once('value').then(s=>s.val()||{}),
+    maintRef(vid).once('value').then(s=>s.val()||{}),
+    exp2Ref(vid).once('value').then(s=>s.val()||{}),
+    tripRef(vid).once('value').then(s=>s.val()||{})
+  ]).then(([fills,svcs,exps,trips])=>{
+    let totalCost=0, totalDist=0;
+    let minOdo=Infinity, maxOdo=-Infinity;
+    // Sum all costs
+    Object.values(fills).forEach(o=>{ totalCost+=toNum(o.totalCost); const odo=toNum(o.odometer); if(odo>0){ if(odo<minOdo)minOdo=odo; if(odo>maxOdo)maxOdo=odo; } });
+    Object.values(svcs).forEach(o=>{ totalCost+=toNum(o.totalCost); const odo=toNum(o.odometer); if(odo>0){ if(odo<minOdo)minOdo=odo; if(odo>maxOdo)maxOdo=odo; } });
+    Object.values(exps).forEach(o=>{ totalCost+=toNum(o.amount); });
+    Object.values(trips).forEach(o=>{ totalDist+=toNum(o.distance||o.endOdo-o.startOdo); });
+    // Distance from fill-up deltas
+    const fillArr=Object.values(fills).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+    for(let i=1;i<fillArr.length;i++){ if(fillArr[i].partial) continue; const d=toNum(fillArr[i].odometer)-toNum(fillArr[i-1].odometer); if(d>0) totalDist+=d; }
+    // Fallback: odometer range
+    if(totalDist===0 && minOdo<maxOdo) totalDist=maxOdo-minOdo;
+    if(totalCost>0 && totalDist>0) $('stat-costkm').textContent=fmtMoney(totalCost/totalDist);
+    else if(totalCost>0 && totalDist===0) $('stat-costkm').textContent='—';
+  });
+}
 
 /* ─── TABS ─── */
 document.querySelectorAll('.tab-btn').forEach(b=>{
