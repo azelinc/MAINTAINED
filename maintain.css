@@ -111,7 +111,7 @@ html, body {
 /* VEHICLE GRID */
 .vehicle-grid { display: flex; flex-direction: column; gap: 10px; }
 .vehicle-card {
-  display: flex; flex-direction: column; gap: 10px;
+  display: flex; flex-direction: column; gap: 10px; position: relative;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; cursor: pointer;
 }
 .vehicle-card:hover { border-color: var(--accent); }
@@ -306,10 +306,13 @@ html, body {
   animation: overdueBadgeBlink 1.2s ease-in-out infinite;
 }
 
-/* ─── VEHICLE CARD REMINDER DOT ─── */
-.vc-rem-dot {
-  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-  vertical-align: middle; transition: all 0.3s;
+/* ─── VEHICLE CARD REMINDER BADGE ─── */
+.vc-rem-badge {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  display: none; align-items: center; justify-content: center;
+  min-width: 24px; height: 24px; border-radius: 12px;
+  font-size: 0.7rem; font-weight: 700; color: #fff; padding: 0 6px;
+  transition: all 0.3s;
 }
-.vc-rem-dot.overdue { background: var(--danger); box-shadow: 0 0 6px rgba(239,68,68,0.6); animation: overdueBadgeBlink 1.2s ease-in-out infinite; }
-.vc-rem-dot.active { background: var(--warn); box-shadow: 0 0 4px rgba(245,158,11,0.4); }
+.vc-rem-badge.overdue { display: flex; background: var(--danger); box-shadow: 0 0 8px rgba(239,68,68,0.5); animation: overdueBadgeBlink 1.2s ease-in-out infinite; }
+.vc-rem-badge.active { display: flex; background: var(--warn); box-shadow: 0 0 6px rgba(245,158,11,0.4); }

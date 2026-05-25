@@ -192,7 +192,7 @@ function renderDash(){
     vids.forEach(id=>{
       const v=vehicles[id]; const isMotorcycle=v.vehicleType==='Motorcycle';
       const vc=vidColors[id]||'#ef4444';
-      h+=`<div class="vehicle-card" data-vid="${esc(id)}" style="border-left:4px solid ${vc}"><div class="vc-top"><span class="vc-dot" style="background:${vc}"></span><span style="font-size:1rem">${isMotorcycle?'🏍️':'🚗'}</span><div class="vc-info"><div class="vehicle-name">${esc(v.make||'')} ${esc(v.model||'')} ${esc(v.year||'')}</div><div class="vehicle-plate">${esc(v.plate||'')} · ${esc(v.fuelType||'Petrol')} <span class="vc-rem-dot" id="vcrdot-${esc(id)}" style="display:none"></span></div></div></div><div class="vc-costs"><div class="vc-stat"><span class="vc-stat-val" id="vccpd-${esc(id)}">—</span><span class="vc-stat-label">/mo</span></div><div class="vc-stat"><span class="vc-stat-val" id="vccpkm-${esc(id)}">—</span><span class="vc-stat-label">/km</span></div></div></div>`;
+      h+=`<div class="vehicle-card" data-vid="${esc(id)}" style="border-left:4px solid ${vc}"><div class="vc-top"><span class="vc-dot" style="background:${vc}"></span><span style="font-size:1rem">${isMotorcycle?'🏍️':'🚗'}</span><div class="vc-info"><div class="vehicle-name">${esc(v.make||'')} ${esc(v.model||'')} ${esc(v.year||'')}</div><div class="vehicle-plate">${esc(v.plate||'')} · ${esc(v.fuelType||'Petrol')}</div></div></div><div class="vc-costs"><div class="vc-stat"><span class="vc-stat-val" id="vccpd-${esc(id)}">—</span><span class="vc-stat-label">/mo</span></div><div class="vc-stat"><span class="vc-stat-val" id="vccpkm-${esc(id)}">—</span><span class="vc-stat-label">/km</span></div></div><span class="vc-rem-badge" id="vcrdot-${esc(id)}"></span></div>`;
     });
     container.innerHTML=h;
     container.querySelectorAll('.vehicle-card[data-vid]').forEach(c=>c.addEventListener('click',()=>openVehicle(c.dataset.vid,vehicles[c.dataset.vid])));
@@ -302,14 +302,20 @@ function renderDash(){
           const nowDate=fmtDate(now());
           Object.values(reminders).forEach(r=>{
             if(r.status==='completed'||r.enabled===false) return;
-            if((r.dueType==='date'||r.dueType==='both') && r.dueDate && r.dueDate < nowDate) overdueCount++;
+            if(!r.dueDate) return;
+            var due=new Date(r.dueDate);
+            var daysRemaining=Math.ceil((due-now())/86400000);
+            if(daysRemaining>90) return; // only upcoming/overdue within 90 days
+            if(daysRemaining<=0) overdueCount++;
             else activeCount++;
           });
-          const dot=$('vcrdot-'+vid);
-          if(dot && (activeCount+overdueCount)>0){
-            dot.style.display='inline-block';
-            dot.style.cssText='display:inline-block;width:8px;height:8px;border-radius:50%;margin-left:6px;vertical-align:middle;'+(overdueCount>0?'background:#ef4444;box-shadow:0 0 6px rgba(239,68,68,0.6)':(activeCount>0?'background:#f59e0b':''));
-            dot.title=(overdueCount>0?overdueCount+' overdue':'')+(overdueCount>0&&activeCount>0?', ':'')+(activeCount>0?activeCount+' active':'')+' reminder'+(activeCount+overdueCount>1?'s':'');
+          const badge=$('vcrdot-'+vid);
+          if(!badge) return;
+          const total=activeCount+overdueCount;
+          if(total>0){
+            badge.className='vc-rem-badge '+(overdueCount>0?'overdue':'active');
+            badge.textContent=total;
+            badge.title=(overdueCount>0?overdueCount+' overdue':'')+(overdueCount>0&&activeCount>0?', ':'')+(activeCount>0?activeCount+' upcoming':'')+' reminder'+(total>1?'s':'');
           }
         });
       });
