@@ -905,18 +905,47 @@ function renderReminderList(vid, items, rawO){
   });
   var nowDate=fmtDate(now());
   $('reminder-list').innerHTML=items.length?items.map(r=>{
-    var isOverdue=false, isDone=r.status==='completed';
-    if(!isDone && r.dueDate && r.dueDate < nowDate) isOverdue=true; // date-based and 'both' both check
-    var rowStyle=isOverdue?'':'';
-    var rowClass=isOverdue?' overdue':'';
+    var isDone=r.status==='completed';
+    // Compute days remaining for date-based and 'both' type
+    var daysRemaining=null, isOverdue=false, isUpcoming=false;
+    if(!isDone && r.dueDate){
+      var due=new Date(r.dueDate);
+      daysRemaining=Math.ceil((due-now())/86400000);
+      if(daysRemaining<=0) isOverdue=true;
+      else if(daysRemaining<=90) isUpcoming=true;
+    }
+    // Odo-based: compute distance to go
+    var odoRemaining=null;
+    if(!isDone && (r.dueType==='odo'||r.dueType==='both') && r.dueOdo){
+      var curOdo=toNum(window.vehicles_cache?.[vid]?.odometer);
+      if(curOdo>0) odoRemaining=r.dueOdo-curOdo;
+    }
+    var rowClass='';
+    if(isOverdue) rowClass=' overdue';
+    else if(isUpcoming) rowClass=' upcoming';
+    if(isDone) rowClass='';
+    var rowStyle='';
     if(isDone) rowStyle='opacity:0.5;border-left:3px solid var(--success)';
-    var overdueBadge=isOverdue?' <span class="overdue-badge" style="color:var(--danger);font-size:0.65rem;font-weight:600">⚠ Overdue</span>':'';
+    // Days badge
+    var daysBadge='';
+    if(daysRemaining!==null){
+      if(daysRemaining<=0) daysBadge=' <span style="color:var(--danger);font-size:0.68rem;font-weight:600">'+Math.abs(daysRemaining)+'d overdue</span>';
+      else if(daysRemaining<=90) daysBadge=' <span style="color:var(--warn);font-size:0.68rem;font-weight:600">in '+daysRemaining+'d</span>';
+      else daysBadge=' <span style="color:var(--muted);font-size:0.68rem">in '+daysRemaining+'d</span>';
+    }
+    // Odo badge
+    if(odoRemaining!==null){
+      var odoBadge='';
+      if(odoRemaining<=0) odoBadge=' <span style="color:var(--danger);font-size:0.68rem;font-weight:600">('+Math.abs(odoRemaining).toLocaleString()+' km over)</span>';
+      else odoBadge=' <span style="color:var(--warn);font-size:0.68rem;font-weight:600">('+odoRemaining.toLocaleString()+' km to go)</span>';
+      daysBadge+=odoBadge;
+    }
     var doneBadge=isDone?' <span style="color:var(--success);font-size:0.68rem">✓ Done</span>':'';
     var btns=isDone
       ? `<button class="btn-xs btn-ghost" onclick="event.stopPropagation();window.toggleReminderStatus('${esc(vid)}','${esc(r.id)}','active')">Undo</button>`
       : `<button class="btn-xs btn-ghost" onclick="event.stopPropagation();window.toggleReminderStatus('${esc(vid)}','${esc(r.id)}','completed')" style="color:var(--success)">Done</button>`;
     return `<div class="item${rowClass}" data-rid="${esc(r.id)}" style="cursor:pointer;${rowStyle}">
-<div class="item-left"><div class="item-name">${esc(r.label)}${overdueBadge}${doneBadge}${r.enabled===false?' <span style="color:var(--muted);font-size:0.68rem">(paused)</span>':''}</div>
+<div class="item-left"><div class="item-name">${esc(r.label)}${daysBadge}${doneBadge}${r.enabled===false?' <span style="color:var(--muted);font-size:0.68rem">(paused)</span>':''}</div>
 <div class="item-meta">${r.dueType==='odo'?'Due at '+toNum(r.dueOdo).toLocaleString()+' km':(r.dueType==='both'?('Due: '+(r.dueDate||'')+' · '+toNum(r.dueOdo||0).toLocaleString()+' km'):r.dueDate||'')}${r.interval?' · Every '+r.interval:''}${r.refLabel?'<br><span style="color:var(--muted);font-size:0.65rem">'+esc(r.refLabel)+'</span>':''}${r.desc?' · '+esc(r.desc):''}</div></div>
 <div class="item-amount">${btns}</div></div>`;
   }).join(''):'<div class="item"><div class="item-left"><div class="item-meta">No reminders &mdash; tap + to add</div></div></div>';

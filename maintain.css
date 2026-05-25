@@ -338,6 +338,10 @@ html, body {
   border-left: 3px solid var(--danger);
   animation: overduePulse 1.8s ease-in-out infinite;
 }
+.item.upcoming {
+  background: rgba(245,158,11,0.06) !important;
+  border-left: 3px solid var(--warn);
+}
 .overdue-badge {
   animation: overdueBadgeBlink 1.2s ease-in-out infinite;
 }
