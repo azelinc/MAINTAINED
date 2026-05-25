@@ -270,7 +270,27 @@ html, body {
 .version-field { margin-top: 12px; text-align: center; }
 #app-version { color: var(--muted); font-size: 12px; letter-spacing: 0.5px; }
 
-/* SWITCH */
+/* ─── SERVICE CHIPS ─── */
+.service-chip-grid {
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.service-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 6px 10px; border-radius: var(--radius);
+  background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--muted); font-size: 0.78rem; cursor: pointer;
+  user-select: none; transition: 0.15s;
+}
+.service-chip:hover { border-color: var(--accent); }
+.service-chip.selected {
+  background: rgba(59,130,246,0.12); border-color: var(--accent); color: var(--accent);
+}
+.service-chip.locked {
+  background: rgba(59,130,246,0.18); border-color: var(--accent); color: var(--accent);
+  cursor: default; opacity: 0.85;
+}
+
+/* ─── SWITCH ─── */
 .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
 .switch input { opacity: 0; width: 0; height: 0; }
 .slider {

@@ -16,7 +16,7 @@ const FIREBASE_CONFIG = {
 firebase.initializeApp(FIREBASE_CONFIG);
 const auth = firebase.auth();
 const db = firebase.database();
-const APP_VER = 'v1.1';
+const APP_VER = 'v1.2';
 const STAGING = location.hostname.includes('-staging');
 
 /* ─── STATE ─── */
@@ -466,7 +466,11 @@ function loadVehicleTabs(vid){
   maintRef(vid).once('value').then(s=>{
     const o=s.val()||{};
     let items=Object.entries(o).map(([id,r])=>({id,...r})).sort((a,b)=> (b.date||'').localeCompare(a.date||''));
-    $('maintenance-list').innerHTML = items.length ? items.map(r=>`<div class="item" data-mid="${esc(r.id)}"><div class="item-left"><div class="item-name">${esc(r.items||'Service')}${r.remarks?' <span style="color:var(--muted);font-size:0.7rem;font-style:italic">'+esc(r.remarks)+'</span>':''}</div><div class="item-meta">${fmtDate2(r.date)} · ${esc(r.shop||'')} · Odo ${toNum(r.odometer).toLocaleString()} <span class="remind-btn"><button class="btn-xs btn-ghost remind-svc-btn" data-label="${esc(r.items||'Service')}" data-date="${r.date||''}" data-odo="${toNum(r.odometer)}" style="font-size:0.65rem">🔔</button></span></div></div><div class="item-amount">${fmtMoney(toNum(r.totalCost))}</div></div>`).join('') : '<div class="item"><div class="item-left"><div class="item-meta">No service records</div></div></div>';
+    $('maintenance-list').innerHTML = items.length ? items.map(r=>{
+      const extras=(r.alsoServiced||[]).filter(x=>x!==r.items);
+      const extraPills=extras.length?'<span style="color:var(--muted);font-size:0.68rem;margin-left:4px">+'+esc(extras.join(', '))+'</span>':'';
+      return `<div class="item" data-mid="${esc(r.id)}"><div class="item-left"><div class="item-name">${esc(r.items||'Service')}${extraPills}${r.remarks?' <span style="color:var(--muted);font-size:0.7rem;font-style:italic">'+esc(r.remarks)+'</span>':''}</div><div class="item-meta">${fmtDate2(r.date)} · ${esc(r.shop||'')} · Odo ${toNum(r.odometer).toLocaleString()} <span class="remind-btn"><button class="btn-xs btn-ghost remind-svc-btn" data-label="${esc(r.items||'Service')}" data-date="${r.date||''}" data-odo="${toNum(r.odometer)}" style="font-size:0.65rem">🔔</button></span></div></div><div class="item-amount">${fmtMoney(toNum(r.totalCost))}</div></div>`;
+    }).join('') : '<div class="item"><div class="item-left"><div class="item-meta">No service records</div></div></div>';
     $('maintenance-list').querySelectorAll('.item[data-mid]').forEach(el=>el.addEventListener('click',()=>editMaintenance(vid,el.dataset.mid)));
     // 🔔 buttons
     $('maintenance-list').querySelectorAll('.remind-svc-btn').forEach(btn=>{
@@ -638,7 +642,9 @@ function editFillup(vid, fid){
 
 /* ─── MAINTENANCE FORM ─── */
 let mtAmountStr='';
-function resetMaintenanceForm(){ todayInput(); $('mt-odo').value=''; populateServiceItemSelect('Oil Change'); $('mt-remarks').value=''; $('mt-shop').value=''; mtAmountStr=''; $('mt-amount').textContent='0.00'; $('mt-next-odo').value=''; $('mt-next-date').value=''; editingRecord=null; $('btn-delete-maintenance').classList.add('hidden');
+let _mtAlsoSelected=new Set();
+let _mtAlsoNames=[];
+function resetMaintenanceForm(){ todayInput(); $('mt-odo').value=''; populateServiceItemSelect('Oil Change'); _mtAlsoSelected.clear(); if($('mt-also')) $('mt-also').innerHTML=''; $('mt-remarks').value=''; $('mt-shop').value=''; mtAmountStr=''; $('mt-amount').textContent='0.00'; $('mt-next-odo').value=''; $('mt-next-date').value=''; editingRecord=null; $('btn-delete-maintenance').classList.add('hidden');
   if(activeVehicle) vRef().child(activeVehicle).once('value').then(s=>{ const v=s.val(); if(v) $('mt-odo').value=toNum(v.odometer)||''; });
 }
 function handleMtNumpad(k){
@@ -648,6 +654,27 @@ function handleMtNumpad(k){
   else mtAmountStr+=k;
   $('mt-amount').textContent = mtAmountStr ? parseFloat(mtAmountStr).toFixed(2) : '0.00';
 }
+function _renderMtAlsoChips(){
+  var grid=$('mt-also');
+  if(!grid) return;
+  var primary=$('mt-items').value;
+  if(!_mtAlsoNames.length){ grid.innerHTML='<span style="color:var(--muted);font-size:0.75rem">Select primary item first</span>'; return; }
+  grid.innerHTML=_mtAlsoNames.map(function(name){
+    var isPrimary=name===primary;
+    var isSelected=isPrimary||_mtAlsoSelected.has(name);
+    var cls='service-chip'+(isPrimary?' locked':'')+(isSelected?' selected':'');
+    return '<button class="'+cls+'" data-chip="'+esc(name)+'" '+(isPrimary?'disabled':'')+'>'+(isSelected?'✓ ':'')+esc(name)+'</button>';
+  }).join('');
+  grid.querySelectorAll('[data-chip]').forEach(function(btn){
+    if(btn.disabled) return;
+    btn.addEventListener('click',function(){
+      var n=btn.dataset.chip;
+      if(_mtAlsoSelected.has(n)){ _mtAlsoSelected.delete(n); }else{ _mtAlsoSelected.add(n); }
+      _renderMtAlsoChips();
+    });
+  });
+}
+$('mt-items').addEventListener('change',function(){ _mtAlsoSelected.delete(this.value); _renderMtAlsoChips(); });
 $('add-maintenance-screen').querySelectorAll('.numpad button').forEach(b=>b.addEventListener('click',()=>handleMtNumpad(b.dataset.k)));
 
 $('btn-mt-back').addEventListener('click',()=>showScreen('vehicle-screen'));
@@ -655,7 +682,7 @@ $('btn-save-maintenance').addEventListener('click',()=>{
   if(!activeVehicle) return;
   const odo=toNum($('mt-odo').value); const amt=mtAmountStr?parseFloat(mtAmountStr):0;
   if(!$('mt-items').value.trim()){ alert('Please describe the service items'); return; }
-  const rec={ date:$('mt-date').value, odometer: odo, items: $('mt-items').value.trim(), remarks: $('mt-remarks').value.trim(), shop: $('mt-shop').value.trim(), totalCost: amt, nextOdo: toNum($('mt-next-odo').value)||null, nextDate: $('mt-next-date').value||null, createdAt: firebase.database.ServerValue.TIMESTAMP };
+  const rec={ date:$('mt-date').value, odometer: odo, items: $('mt-items').value.trim(), alsoServiced: Array.from(_mtAlsoSelected).filter(x=>x!==$('mt-items').value.trim()), remarks: $('mt-remarks').value.trim(), shop: $('mt-shop').value.trim(), totalCost: amt, nextOdo: toNum($('mt-next-odo').value)||null, nextDate: $('mt-next-date').value||null, createdAt: firebase.database.ServerValue.TIMESTAMP };
   const key = editingRecord && editingRecord.type==='maintenance' ? editingRecord.recordId : maintRef(activeVehicle).push().key;
   Promise.all([
     maintRef(activeVehicle).child(key).set(rec),
@@ -672,7 +699,7 @@ function editMaintenance(vid, mid){
   maintRef(vid).child(mid).once('value').then(s=>{
     const o=s.val(); if(!o) return;
     editingRecord={type:'maintenance', vehicleId:vid, recordId:mid};
-    $('mt-date').value=o.date||''; $('mt-odo').value=o.odometer||''; populateServiceItemSelect(o.items||''); $('mt-remarks').value=o.remarks||''; $('mt-shop').value=o.shop||''; mtAmountStr=o.totalCost?String(o.totalCost):''; $('mt-amount').textContent=mtAmountStr?parseFloat(mtAmountStr).toFixed(2):'0.00'; $('mt-next-odo').value=o.nextOdo||''; $('mt-next-date').value=o.nextDate||'';
+    $('mt-date').value=o.date||''; $('mt-odo').value=o.odometer||''; populateServiceItemSelect(o.items||''); _mtAlsoSelected=new Set((o.alsoServiced||[]).filter(function(x){return x!==o.items;})); if(_mtAlsoNames.length) _renderMtAlsoChips(); $('mt-remarks').value=o.remarks||''; $('mt-shop').value=o.shop||''; mtAmountStr=o.totalCost?String(o.totalCost):''; $('mt-amount').textContent=mtAmountStr?parseFloat(mtAmountStr).toFixed(2):'0.00'; $('mt-next-odo').value=o.nextOdo||''; $('mt-next-date').value=o.nextDate||'';
     $('btn-delete-maintenance').classList.remove('hidden');
     showScreen('add-maintenance-screen');
   });
@@ -812,8 +839,8 @@ function loadVehicleReminders(vid){
         // Check services: items match + date >= reminder date
         if(!found && (r.dueType==='date'||r.dueType==='both') && r.dueDate){
           Object.values(svcs).forEach(sv=>{
-            var svcName=(sv.items||'').toLowerCase();
-            if(svcName===matchKey || svcName.includes(matchKey) || matchKey.includes(svcName)){
+            var allNames=[(sv.items||'').toLowerCase()].concat((sv.alsoServiced||[]).map(function(x){return (x||'').toLowerCase();}));
+            if(allNames.some(function(n){return n===matchKey||n.includes(matchKey)||matchKey.includes(n);})){
               if(sv.date >= r.dueDate){ found=true; }
             }
           });
@@ -822,8 +849,9 @@ function loadVehicleReminders(vid){
         if(!found && (r.dueType==='odo'||r.dueType==='both') && r.dueOdo){
           Object.values(svcs).forEach(sv=>{
             var svcName=(sv.items||'').toLowerCase();
+            var allNames=[svcName].concat((sv.alsoServiced||[]).map(function(x){return (x||'').toLowerCase();}));
             var svcOdo=toNum(sv.odometer);
-            if((svcName===matchKey||svcName.includes(matchKey)||matchKey.includes(svcName)) && svcOdo>=r.dueOdo){
+            if(allNames.some(function(n){return n===matchKey||n.includes(matchKey)||matchKey.includes(n);}) && svcOdo>=r.dueOdo){
               found=true;
             }
           });
@@ -1218,6 +1246,8 @@ function populateServiceItemSelect(selectedVal){
     if(selectedVal && !names.includes(selectedVal)){
       sel.innerHTML+=`<option value="${esc(selectedVal)}" selected>${esc(selectedVal)}</option>`;
     }
+    _mtAlsoNames=names;
+    if($('mt-also')) _renderMtAlsoChips();
   });
 }
 
