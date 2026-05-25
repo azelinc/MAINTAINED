@@ -181,9 +181,9 @@ function renderDash(){
         let fuelTotal=0, svcTotal=0, expTotal=0;
         results.forEach(([fSnap,mSnap,eSnap])=>{
           const fills=fSnap.val()||{}, svcs=mSnap.val()||{}, exps=eSnap.val()||{};
-          if(settings.modules.fuel) Object.values(fills).forEach(o=>{ if((o.date||'').startsWith(monthPrefix)) fuelTotal+=toNum(o.totalCost); });
-          if(settings.modules.service) Object.values(svcs).forEach(o=>{ if((o.date||'').startsWith(yearPrefix)) svcTotal+=toNum(o.totalCost); });
-          if(settings.modules.expenses) Object.values(exps).forEach(o=>{ if((o.date||'').startsWith(yearPrefix)) expTotal+=toNum(o.amount); });
+          Object.values(fills).forEach(o=>{ if((o.date||'').startsWith(monthPrefix)) fuelTotal+=toNum(o.totalCost); });
+          Object.values(svcs).forEach(o=>{ if((o.date||'').startsWith(yearPrefix)) svcTotal+=toNum(o.totalCost); });
+          Object.values(exps).forEach(o=>{ if((o.date||'').startsWith(yearPrefix)) expTotal+=toNum(o.amount); });
         });
         if(settings.modules.fuel) $('hero-fuel').textContent = fmtMoney(fuelTotal);
         if(settings.modules.service) $('hero-service').textContent = fmtMoney(svcTotal);
