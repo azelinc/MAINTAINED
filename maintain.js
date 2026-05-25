@@ -266,6 +266,7 @@ function openVehicle(vid, v){
 }
 
 function loadVehicleTabs(vid){
+  applyModules();
   // Stats
   if(settings.modules.fuel){
   fillRef(vid).once('value').then(s=>{
