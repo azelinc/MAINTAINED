@@ -32,6 +32,7 @@ let authReady = false;
 let activeVehicle = null;   // vehicle id
 let editingRecord = null;   // { type, vehicleId, recordId }
 let currentReceiptFile = null;   // File object for upload
+let currentMtReceiptFile = null;  // Service receipt
 let settings = { units:'metric', currency:'RM', modules:{fuel:true,service:true,expenses:true,trips:true,reminders:true} };
 let _vehCallback = null;
 
@@ -490,7 +491,8 @@ function loadVehicleTabs(vid){
     $('maintenance-list').innerHTML = items.length ? items.map(r=>{
       const extras=(r.alsoServiced||[]).filter(x=>x!==r.items);
       const extraPills=extras.length?'<span style="color:var(--muted);font-size:0.68rem;margin-left:4px">+'+esc(extras.join(', '))+'</span>':'';
-      return `<div class="item" data-mid="${esc(r.id)}"><div class="item-left"><div class="item-name">${esc(r.items||'Service')}${extraPills}${r.remarks?' <span style="color:var(--muted);font-size:0.7rem;font-style:italic">'+esc(r.remarks)+'</span>':''}</div><div class="item-meta">${fmtDate2(r.date)} · ${esc(r.shop||'')} · Odo ${toNum(r.odometer).toLocaleString()} <span class="remind-btn"><button class="btn-xs btn-ghost remind-svc-btn" data-label="${esc(r.items||'Service')}" data-date="${r.date||''}" data-odo="${toNum(r.odometer)}" style="font-size:0.65rem">🔔</button></span></div></div><div class="item-amount">${fmtMoney(toNum(r.totalCost))}</div></div>`;
+      const receiptIcon=r.receiptUrl?' <span style="font-size:0.7rem">📎</span>':'';
+      return '<div class="item" data-mid="'+esc(r.id)+'"><div class="item-left"><div class="item-name">'+esc(r.items||'Service')+extraPills+(r.remarks?' <span style="color:var(--muted);font-size:0.7rem;font-style:italic">'+esc(r.remarks)+'</span>':'')+receiptIcon+'</div><div class="item-meta">'+fmtDate2(r.date)+' · '+esc(r.shop||'')+' · Odo '+toNum(r.odometer).toLocaleString()+' <span class="remind-btn"><button class="btn-xs btn-ghost remind-svc-btn" data-label="'+esc(r.items||'Service')+'" data-date="'+(r.date||'')+'" data-odo="'+toNum(r.odometer)+'" style="font-size:0.65rem">🔔</button></span></div></div><div class="item-amount">'+fmtMoney(toNum(r.totalCost))+'</div></div>';
     }).join('') : '<div class="item"><div class="item-left"><div class="item-meta">No service records</div></div></div>';
     $('maintenance-list').querySelectorAll('.item[data-mid]').forEach(el=>el.addEventListener('click',()=>editMaintenance(vid,el.dataset.mid)));
     // 🔔 buttons
@@ -679,7 +681,7 @@ function editFillup(vid, fid){
 let mtAmountStr='';
 let _mtAlsoSelected=new Set();
 let _mtAlsoNames=[];
-function resetMaintenanceForm(){ todayInput(); $('mt-odo').value=''; populateServiceItemSelect('Oil Change'); _mtAlsoSelected.clear(); if($('mt-also')) $('mt-also').innerHTML=''; $('mt-remarks').value=''; $('mt-shop').value=''; mtAmountStr=''; $('mt-amount').textContent='0.00'; $('mt-next-odo').value=''; $('mt-next-date').value=''; editingRecord=null; $('btn-delete-maintenance').classList.add('hidden');
+function resetMaintenanceForm(){ todayInput(); $('mt-odo').value=''; populateServiceItemSelect('Oil Change'); _mtAlsoSelected.clear(); if($('mt-also')) $('mt-also').innerHTML=''; $('mt-remarks').value=''; $('mt-shop').value=''; mtAmountStr=''; $('mt-amount').textContent='0.00'; $('mt-next-odo').value=''; $('mt-next-date').value=''; editingRecord=null; currentMtReceiptFile=null; $('mt-receipt').value=''; $('mt-receipt-preview').innerHTML=''; $('mt-receipt-preview').classList.add('hidden'); $('btn-delete-maintenance').classList.add('hidden');
   if(activeVehicle) vRef().child(activeVehicle).once('value').then(s=>{ const v=s.val(); if(v) $('mt-odo').value=toNum(v.odometer)||''; });
 }
 function handleMtNumpad(k){
@@ -712,29 +714,84 @@ function _renderMtAlsoChips(){
 $('mt-items').addEventListener('change',function(){ _mtAlsoSelected.delete(this.value); _renderMtAlsoChips(); });
 $('add-maintenance-screen').querySelectorAll('.numpad button').forEach(b=>b.addEventListener('click',()=>handleMtNumpad(b.dataset.k)));
 
+// Service receipt file input handler
+$('mt-receipt').addEventListener('change', function(){
+  const file = this.files[0];
+  if (!file) { currentMtReceiptFile = null; $('mt-receipt-preview').classList.add('hidden'); return; }
+  currentMtReceiptFile = file;
+  const preview = $('mt-receipt-preview');
+  preview.innerHTML = '';
+  preview.classList.remove('hidden');
+  if (file.type.startsWith('image/')) {
+    const reader = new FileReader();
+    reader.onload = function(e){
+      preview.innerHTML = '<img src="'+e.target.result+'" alt="Service receipt preview">';
+    };
+    reader.readAsDataURL(file);
+  } else {
+    preview.innerHTML = '<span class="file-badge">📄 '+file.name+'</span>';
+  }
+});
+
 $('btn-mt-back').addEventListener('click',()=>showScreen('vehicle-screen'));
 $('btn-save-maintenance').addEventListener('click',()=>{
   if(!activeVehicle) return;
   const odo=toNum($('mt-odo').value); const amt=mtAmountStr?parseFloat(mtAmountStr):0;
   if(!$('mt-items').value.trim()){ alert('Please describe the service items'); return; }
-  const rec={ date:$('mt-date').value, odometer: odo, items: $('mt-items').value.trim(), alsoServiced: Array.from(_mtAlsoSelected).filter(x=>x!==$('mt-items').value.trim()), remarks: $('mt-remarks').value.trim(), shop: $('mt-shop').value.trim(), totalCost: amt, nextOdo: toNum($('mt-next-odo').value)||null, nextDate: $('mt-next-date').value||null, createdAt: firebase.database.ServerValue.TIMESTAMP };
   const key = editingRecord && editingRecord.type==='maintenance' ? editingRecord.recordId : maintRef(activeVehicle).push().key;
-  Promise.all([
-    maintRef(activeVehicle).child(key).set(rec),
-    vRef().child(activeVehicle).update({ odometer: odo, updatedAt: firebase.database.ServerValue.TIMESTAMP })
-  ]).then(()=>{ resetMaintenanceForm(); showScreen('vehicle-screen'); loadVehicleTabs(activeVehicle); });
+  const rec={ date:$('mt-date').value, odometer: odo, items: $('mt-items').value.trim(), alsoServiced: Array.from(_mtAlsoSelected).filter(x=>x!==$('mt-items').value.trim()), remarks: $('mt-remarks').value.trim(), shop: $('mt-shop').value.trim(), totalCost: amt, nextOdo: toNum($('mt-next-odo').value)||null, nextDate: $('mt-next-date').value||null, createdAt: firebase.database.ServerValue.TIMESTAMP };
+
+  const saveRec = () => {
+    Promise.all([
+      maintRef(activeVehicle).child(key).set(rec),
+      vRef().child(activeVehicle).update({ odometer: odo, updatedAt: firebase.database.ServerValue.TIMESTAMP })
+    ]).then(()=>{ resetMaintenanceForm(); showScreen('vehicle-screen'); loadVehicleTabs(activeVehicle); });
+  };
+
+  // Upload receipt if selected
+  if (currentMtReceiptFile) {
+    const ext = currentMtReceiptFile.name.split('.').pop() || 'jpg';
+    const storagePath = 'maintained/'+currentUser.uid+'/receipts/'+activeVehicle+'/'+key+'.'+ext;
+    const uploadTask = storage.ref(storagePath).put(currentMtReceiptFile);
+    uploadTask.on('state_changed', null, function(err){
+      console.error('Service receipt upload failed:', err);
+      saveRec();
+    }, function(){
+      uploadTask.snapshot.ref.getDownloadURL().then(function(url){
+        rec.receiptUrl = url;
+        maintRef(activeVehicle).child(key).update({receiptUrl: url});
+        saveRec();
+      }).catch(function(){ saveRec(); });
+    });
+  } else {
+    saveRec();
+  }
 });
 $('btn-delete-maintenance').addEventListener('click',()=>{
   if(!editingRecord || !activeVehicle) return;
   if(!confirm('Delete this service record?')) return;
-  maintRef(activeVehicle).child(editingRecord.recordId).remove().then(()=>{ resetMaintenanceForm(); showScreen('vehicle-screen'); loadVehicleTabs(activeVehicle); });
+  // Delete receipt from storage if present
+  maintRef(activeVehicle).child(editingRecord.recordId).once('value').then(s=>{
+    const rec=s.val();
+    if(rec && rec.receiptUrl){
+      storage.refFromURL(rec.receiptUrl).delete().catch(function(){});
+    }
+    return maintRef(activeVehicle).child(editingRecord.recordId).remove();
+  }).then(()=>{ resetMaintenanceForm(); showScreen('vehicle-screen'); loadVehicleTabs(activeVehicle); });
 });
 
 function editMaintenance(vid, mid){
   maintRef(vid).child(mid).once('value').then(s=>{
     const o=s.val(); if(!o) return;
     editingRecord={type:'maintenance', vehicleId:vid, recordId:mid};
+    currentMtReceiptFile=null; $('mt-receipt').value='';
     $('mt-date').value=o.date||''; $('mt-odo').value=o.odometer||''; populateServiceItemSelect(o.items||''); _mtAlsoSelected=new Set((o.alsoServiced||[]).filter(function(x){return x!==o.items;})); if(_mtAlsoNames.length) _renderMtAlsoChips(); $('mt-remarks').value=o.remarks||''; $('mt-shop').value=o.shop||''; mtAmountStr=o.totalCost?String(o.totalCost):''; $('mt-amount').textContent=mtAmountStr?parseFloat(mtAmountStr).toFixed(2):'0.00'; $('mt-next-odo').value=o.nextOdo||''; $('mt-next-date').value=o.nextDate||'';
+    // Show existing receipt preview
+    var preview=$('mt-receipt-preview');
+    if(o.receiptUrl){
+      preview.innerHTML='<img src="'+o.receiptUrl+'" alt="Service Receipt">';
+      preview.classList.remove('hidden');
+    } else { preview.innerHTML=''; preview.classList.add('hidden'); }
     $('btn-delete-maintenance').classList.remove('hidden');
     showScreen('add-maintenance-screen');
   });
