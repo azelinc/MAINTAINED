@@ -17,7 +17,7 @@ firebase.initializeApp(FIREBASE_CONFIG);
 const auth = firebase.auth();
 const db = firebase.database();
 const storage = firebase.storage();
-const APP_VER = 'v1.33';
+const APP_VER = 'v1.34';
 const STAGING = location.hostname.includes('-staging');
 
 /* ─── EARLY VERSION DISPLAY ─── */
@@ -755,13 +755,17 @@ $('btn-save-maintenance').addEventListener('click',()=>{
     const uploadTask = storage.ref(storagePath).put(currentMtReceiptFile);
     uploadTask.on('state_changed', null, function(err){
       console.error('Service receipt upload failed:', err);
+      alert('Receipt upload failed (storage may need CORS config). Record saved without receipt. Code: '+err.code);
       saveRec();
     }, function(){
       uploadTask.snapshot.ref.getDownloadURL().then(function(url){
         rec.receiptUrl = url;
         maintRef(activeVehicle).child(key).update({receiptUrl: url});
         saveRec();
-      }).catch(function(){ saveRec(); });
+      }).catch(function(e){
+        console.error('Download URL failed:', e);
+        saveRec();
+      });
     });
   } else {
     saveRec();
@@ -847,13 +851,17 @@ $('btn-save-expense').addEventListener('click',()=>{
     const uploadTask = storage.ref(storagePath).put(currentReceiptFile);
     uploadTask.on('state_changed', null, function(err){
       console.error('Receipt upload failed:', err);
+      alert('Receipt upload failed (storage may need CORS config). Record saved without receipt. Code: '+err.code);
       saveRec();
     }, function(){
       uploadTask.snapshot.ref.getDownloadURL().then(function(url){
         rec.receiptUrl = url;
         exp2Ref(activeVehicle).child(key).update({receiptUrl: url});
         saveRec();
-      }).catch(function(){ saveRec(); });
+      }).catch(function(e){
+        console.error('Download URL failed:', e);
+        saveRec();
+      });
     });
   } else {
     saveRec();
