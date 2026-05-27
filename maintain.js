@@ -17,7 +17,7 @@ firebase.initializeApp(FIREBASE_CONFIG);
 const auth = firebase.auth();
 const db = firebase.database();
 const storage = firebase.storage();
-const APP_VER = 'v1.41';
+const APP_VER = 'v1.42';
 const STAGING = location.hostname.includes('-staging');
 
 /* ─── EARLY VERSION DISPLAY ─── */
@@ -1233,7 +1233,6 @@ function showReminderForm(mode, rid, data, ctx){
   } else if(ctx){
     // From expense/service: pre-fill from context
     $('rem-label').value=ctx.label||'';
-    $('rem-type').value='date';
     $('rem-interval-val').value=12;
     $('rem-interval-unit').value='months';
     $('rem-interval-odo').value=10000;
@@ -1242,47 +1241,11 @@ function showReminderForm(mode, rid, data, ctx){
     $('rem-ref-label').textContent=ctx.refLabel||'';
     $('rem-ref-detail').textContent=ctx.refDetail||'';
     // Batch items (from service with alsoServiced)
-    $('rem-batch-items').style.display='none';
-    $('rem-batch-chips').innerHTML='';
-    window._remBatchIds=[];
+    window._remBatchItems=null;
     if(ctx.extraItems&&ctx.extraItems.length){
-      var allItems=[ctx.label].concat(ctx.extraItems.filter(function(x){return x!==ctx.label;}));
-      $('rem-batch-items').style.display='block';
-      // Hide top interval fields when batch mode active
-      $('rem-interval-field').classList.add('hidden');
-      $('rem-odo-interval-field').classList.add('hidden');
-      // Show batch chip sub-fields type selector
-      var typ=$('rem-type').value;
-      $('rem-batch-chips').innerHTML=allItems.map(function(item,i){
-        var checked=i===0?' checked':'';
-        var sd=smartInterval(item);
-        var id='rbi-'+i;
-        window._remBatchIds.push(id);
-        var fieldsHtml='';
-        if(typ==='date'||typ==='both'){
-          var months=sd.months;
-          fieldsHtml+='<span style="color:var(--muted);font-size:0.7rem;margin-right:4px">Every</span>'+
-            '<input type="number" class="rbi-val" id="'+id+'-val" value="'+months+'" min="1" style="width:50px;text-align:center">'+
-            '<select class="rbi-unit" id="'+id+'-unit" style="width:70px"><option value="months">months</option><option value="years">years</option></select>';
-        }
-        if(typ==='odo'||typ==='both'){
-          if(typ==='both') fieldsHtml+='<span style="color:var(--muted);font-size:0.7rem;margin:0 4px">or</span>';
-          fieldsHtml+='<span style="color:var(--muted);font-size:0.7rem;margin-right:4px">Every</span>'+
-            '<input type="number" class="rbi-odo" id="'+id+'-odo" value="'+sd.km+'" min="100" step="1000" style="width:60px;text-align:center">'+
-            '<span style="color:var(--muted);font-size:0.7rem;margin-left:4px">km</span>';
-        }
-        return '<div class="rem-batch-item" data-idx="'+i+'" style="margin:4px 0"><label class="chip rem-batch-chip" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;margin-bottom:4px">'+
-          '<input type="checkbox" class="rem-batch-cb" data-id="'+id+'" data-item="'+esc(item)+'"'+checked+' style="margin:0">'+esc(item)+'</label>'+
-          '<div class="rbi-fields" id="'+id+'-fields" style="display:'+(checked?'flex':'none')+';align-items:center;flex-wrap:wrap;gap:4px;margin:4px 0 8px 24px;font-size:0.8rem">'+fieldsHtml+'</div></div>';
-      }).join('');
-      // Wire checkbox events to toggle fields
-      $('rem-batch-chips').querySelectorAll('.rem-batch-cb').forEach(function(cb){
-        cb.addEventListener('change',function(){
-          var fields=$(this.dataset.id+'-fields');
-          if(fields) fields.style.display=this.checked?'flex':'none';
-        });
-      });
+      window._remBatchItems=[ctx.label].concat(ctx.extraItems.filter(function(x){return x!==ctx.label;}));
     }
+    renderBatchChips();
   } else {
     // Fresh add
     $('rem-label').value='';
@@ -1320,19 +1283,61 @@ function closeReminderModal(){
   window._editingReminderId=null;
   window._remModalMode='add';
   window._remCtx=null;
+  window._remBatchItems=null;
+}
+
+function renderBatchChips(){
+  var items=window._remBatchItems;
+  if(!items||!items.length){ $('rem-batch-items').style.display='none'; $('rem-batch-chips').innerHTML=''; window._remBatchIds=[]; return; }
+  $('rem-batch-items').style.display='block';
+  // Keep top interval fields hidden when batch mode active
+  $('rem-interval-field').classList.add('hidden');
+  $('rem-odo-interval-field').classList.add('hidden');
+  window._remBatchIds=[];
+  var typ=$('rem-type').value;
+  $('rem-batch-chips').innerHTML=items.map(function(item,i){
+    var checked=i===0?' checked':'';
+    var sd=smartInterval(item);
+    var id='rbi-'+i;
+    window._remBatchIds.push(id);
+    var fieldsHtml='';
+    if(typ==='date'||typ==='both'){
+      var months=sd.months;
+      fieldsHtml+='<span style="color:var(--muted);font-size:0.7rem;margin-right:4px">Every</span>'+
+        '<input type="number" class="rbi-val" id="'+id+'-val" value="'+months+'" min="1" style="width:50px;text-align:center">'+
+        '<select class="rbi-unit" id="'+id+'-unit" style="width:70px"><option value="months">months</option><option value="years">years</option></select>';
+    }
+    if(typ==='odo'||typ==='both'){
+      if(typ==='both') fieldsHtml+='<span style="color:var(--muted);font-size:0.7rem;margin:0 4px">or</span>';
+      fieldsHtml+='<span style="color:var(--muted);font-size:0.7rem;margin-right:4px">Every</span>'+
+        '<input type="number" class="rbi-odo" id="'+id+'-odo" value="'+sd.km+'" min="100" step="1000" style="width:60px;text-align:center">'+
+        '<span style="color:var(--muted);font-size:0.7rem;margin-left:4px">km</span>';
+    }
+    return '<div class="rem-batch-item" data-idx="'+i+'" style="margin:4px 0"><label class="chip rem-batch-chip" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;margin-bottom:4px">'+
+      '<input type="checkbox" class="rem-batch-cb" data-id="'+id+'" data-item="'+esc(item)+'"'+checked+' style="margin:0">'+esc(item)+'</label>'+
+      '<div class="rbi-fields" id="'+id+'-fields" style="display:'+(checked?'flex':'none')+';align-items:center;flex-wrap:wrap;gap:4px;margin:4px 0 8px 24px;font-size:0.8rem">'+fieldsHtml+'</div></div>';
+  }).join('');
+  // Wire checkbox events to toggle fields
+  $('rem-batch-chips').querySelectorAll('.rem-batch-cb').forEach(function(cb){
+    cb.addEventListener('change',function(){
+      var fields=$(this.dataset.id+'-fields');
+      if(fields) fields.style.display=this.checked?'flex':'none';
+    });
+  });
 }
 
 $('btn-reminder-close').addEventListener('click',closeReminderModal);
 $('btn-rem-cancel-delete').addEventListener('click',closeReminderModal);
-$('rem-type').addEventListener('change',()=>{ updateRemFormFields(); updateRemDuePreview(); });
+$('rem-type').addEventListener('change',()=>{ updateRemFormFields(); updateRemDuePreview(); renderBatchChips(); });
 $('rem-interval-val').addEventListener('input',updateRemDuePreview);
 $('rem-interval-unit').addEventListener('change',updateRemDuePreview);
 $('rem-interval-odo').addEventListener('input',updateRemDuePreview);
 
 function updateRemFormFields(){
   const typ=$('rem-type').value;
-  $('rem-interval-field').classList.toggle('hidden',typ!=='date'&&typ!=='both');
-  $('rem-odo-interval-field').classList.toggle('hidden',typ!=='odo'&&typ!=='both');
+  var batchActive=window._remBatchItems&&window._remBatchItems.length;
+  $('rem-interval-field').classList.toggle('hidden',batchActive||(typ!=='date'&&typ!=='both'));
+  $('rem-odo-interval-field').classList.toggle('hidden',batchActive||(typ!=='odo'&&typ!=='both'));
 }
 
 function updateRemDuePreview(){
@@ -1401,7 +1406,6 @@ $('btn-save-reminder').addEventListener('click',()=>{
   }
   const typ=$('rem-type').value;
   const ctx=window._remCtx;
-  var intervalLabel=typ==='date'?($('rem-interval-val').value+' '+$('rem-interval-unit').value):(typ==='odo'?($('rem-interval-odo').value+' km'):($('rem-interval-val').value+' '+$('rem-interval-unit').value+' / '+$('rem-interval-odo').value+' km'));
 
   function buildRec(label, idx){
     var dueDate=null, dueOdo=null;
@@ -1435,7 +1439,34 @@ $('btn-save-reminder').addEventListener('click',()=>{
     if(ctx){
       rec.refLabel=ctx.refLabel||'';
       rec.refDetail=ctx.refDetail||'';
-      rec.interval=intervalLabel;
+      // Compute per-chip interval label
+      var usePerChip2=window._remBatchIds&&window._remBatchIds.length;
+      if(usePerChip2){
+        var id='rbi-'+idx;
+        if(typ==='date'){
+          var vEl=$(''+id+'-val'), uEl=$(''+id+'-unit');
+          var pval=vEl?parseInt(vEl.value)||12:12;
+          var punit=uEl?uEl.value:'months';
+          rec.interval=pval+' '+punit;
+        } else if(typ==='odo'){
+          var oEl=$(''+id+'-odo');
+          rec.interval=(oEl?parseInt(oEl.value)||10000:10000)+' km';
+        } else if(typ==='both'){
+          var vEl3=$(''+id+'-val'), uEl3=$(''+id+'-unit'), oEl3=$(''+id+'-odo');
+          var pval3=vEl3?parseInt(vEl3.value)||12:12;
+          var punit3=uEl3?uEl3.value:'months';
+          var oval3=oEl3?parseInt(oEl3.value)||10000:10000;
+          rec.interval=pval3+' '+punit3+' / '+oval3+' km';
+        }
+      } else {
+        if(typ==='date'){
+          rec.interval=$('rem-interval-val').value+' '+$('rem-interval-unit').value;
+        } else if(typ==='odo'){
+          rec.interval=$('rem-interval-odo').value+' km';
+        } else {
+          rec.interval=$('rem-interval-val').value+' '+$('rem-interval-unit').value+' / '+$('rem-interval-odo').value+' km';
+        }
+      }
     }
     return rec;
   }
