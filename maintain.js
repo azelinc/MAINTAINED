@@ -17,7 +17,7 @@ firebase.initializeApp(FIREBASE_CONFIG);
 const auth = firebase.auth();
 const db = firebase.database();
 const storage = firebase.storage();
-const APP_VER = 'v1.38';
+const APP_VER = 'v1.39';
 const STAGING = location.hostname.includes('-staging');
 
 /* ─── EARLY VERSION DISPLAY ─── */
@@ -548,19 +548,22 @@ function loadVehicleTabs(vid){
     let items=Object.entries(o).map(([id,r])=>({id,...r})).sort((a,b)=> (b.date||'').localeCompare(a.date||''));
     $('maintenance-list').innerHTML = items.length ? items.map(r=>{
       const extras=(r.alsoServiced||[]).filter(x=>x!==r.items);
-      const extraPills=extras.length?'<span style="color:var(--muted);font-size:0.68rem;margin-left:4px">+'+esc(extras.join(', '))+'</span>':'';
+      const extrasStr=extras.length?esc(JSON.stringify(extras)):'';
       const receiptIcon=r.receiptUrl?' <span style="font-size:0.7rem">📎</span>':'';
-      return '<div class="item" data-mid="'+esc(r.id)+'"><div class="item-left"><div class="item-name">'+esc(r.items||'Service')+extraPills+(r.remarks?' <span style="color:var(--muted);font-size:0.7rem;font-style:italic">'+esc(r.remarks)+'</span>':'')+receiptIcon+'</div><div class="item-meta">'+fmtDate2(r.date)+' · '+esc(r.shop||'')+' · Odo '+toNum(r.odometer).toLocaleString()+' <span class="remind-btn"><button class="btn-xs btn-ghost remind-svc-btn" data-label="'+esc(r.items||'Service')+'" data-date="'+(r.date||'')+'" data-odo="'+toNum(r.odometer)+'" style="font-size:0.65rem">🔔</button></span></div></div><div class="item-amount">'+fmtMoney(toNum(r.totalCost))+'</div></div>';
+      return '<div class="item" data-mid="'+esc(r.id)+'"><div class="item-left"><div class="item-name">'+esc(r.items||'Service')+(extras.length?'<span style="color:var(--muted);font-size:0.68rem;margin-left:4px">+'+esc(extras.join(', '))+'</span>':'')+(r.remarks?' <span style="color:var(--muted);font-size:0.7rem;font-style:italic">'+esc(r.remarks)+'</span>':'')+receiptIcon+'</div><div class="item-meta">'+fmtDate2(r.date)+' · '+esc(r.shop||'')+' · Odo '+toNum(r.odometer).toLocaleString()+' <span class="remind-btn"><button class="btn-xs btn-ghost remind-svc-btn" data-label="'+esc(r.items||'Service')+'" data-date="'+(r.date||'')+'" data-odo="'+toNum(r.odometer)+'" data-extras="'+extrasStr+'" style="font-size:0.65rem">🔔</button></span></div></div><div class="item-amount">'+fmtMoney(toNum(r.totalCost))+'</div></div>';
     }).join('') : '<div class="item"><div class="item-left"><div class="item-meta">No service records</div></div></div>';
     $('maintenance-list').querySelectorAll('.item[data-mid]').forEach(el=>el.addEventListener('click',()=>editMaintenance(vid,el.dataset.mid)));
     // 🔔 buttons
     $('maintenance-list').querySelectorAll('.remind-svc-btn').forEach(btn=>{
       btn.addEventListener('click',e=>{
         e.stopPropagation();
+        var extraItems=[];
+        try{ if(btn.dataset.extras) extraItems=JSON.parse(btn.dataset.extras); }catch(_){}
         showReminderForm('add',null,null,{
           label:btn.dataset.label, date:btn.dataset.date, odo:parseInt(btn.dataset.odo)||0,
           refLabel:btn.dataset.label,
-          refDetail:btn.dataset.date+' · Odo '+(parseInt(btn.dataset.odo)||0).toLocaleString()
+          refDetail:btn.dataset.date+' · Odo '+(parseInt(btn.dataset.odo)||0).toLocaleString(),
+          extraItems:extraItems
         });
       });
     });
@@ -1238,6 +1241,17 @@ function showReminderForm(mode, rid, data, ctx){
     $('rem-ref-info').style.display='block';
     $('rem-ref-label').textContent=ctx.refLabel||'';
     $('rem-ref-detail').textContent=ctx.refDetail||'';
+    // Batch items (from service with alsoServiced)
+    $('rem-batch-items').style.display='none';
+    $('rem-batch-chips').innerHTML='';
+    if(ctx.extraItems&&ctx.extraItems.length){
+      var allItems=[ctx.label].concat(ctx.extraItems.filter(function(x){return x!==ctx.label;}));
+      $('rem-batch-items').style.display='block';
+      $('rem-batch-chips').innerHTML=allItems.map(function(item,i){
+        var checked=i===0?' checked':''; // main item pre-checked
+        return '<label class="chip rem-batch-chip" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px"><input type="checkbox" class="rem-batch-cb" data-item="'+esc(item)+'"'+checked+' style="margin:0">'+esc(item)+'</label>';
+      }).join('');
+    }
   } else {
     // Fresh add
     $('rem-label').value='';
@@ -1247,6 +1261,7 @@ function showReminderForm(mode, rid, data, ctx){
     $('rem-interval-odo').value=10000;
     $('rem-note').value='';
     $('rem-ref-info').style.display='none';
+    $('rem-batch-items').style.display='none';
   }
   updateRemFormFields();
   updateRemDuePreview();
@@ -1327,48 +1342,65 @@ window.deleteReminder=function(vid,rid){
 $('btn-save-reminder').addEventListener('click',()=>{
   const errEl=$('rem-error');
   errEl.style.display='none';
-  const label=$('rem-label').value.trim();
-  if(!label){ errEl.textContent='Enter a label'; errEl.style.display='block'; return; }
+  var labels=[];
+  // Check for batch chips first
+  var batchCbs=$('rem-batch-chips').querySelectorAll('.rem-batch-cb:checked');
+  if(batchCbs.length){
+    batchCbs.forEach(function(cb){ labels.push(cb.dataset.item); });
+  } else {
+    var lbl=$('rem-label').value.trim();
+    if(!lbl){ errEl.textContent='Enter a label'; errEl.style.display='block'; return; }
+    labels.push(lbl);
+  }
   const typ=$('rem-type').value;
-  let dueDate=null, dueOdo=null;
   const ctx=window._remCtx;
-  if(typ==='date'||typ==='both'){
-    const val=parseInt($('rem-interval-val').value)||12;
-    const unit=$('rem-interval-unit').value;
-    const months=unit==='years'?val*12:val;
-    const baseDate=ctx&&ctx.date?new Date(ctx.date):new Date();
-    const due=new Date(baseDate); due.setMonth(due.getMonth()+months);
-    dueDate=fmtDate(due);
+  var intervalLabel=typ==='date'?($('rem-interval-val').value+' '+$('rem-interval-unit').value):(typ==='odo'?($('rem-interval-odo').value+' km'):($('rem-interval-val').value+' '+$('rem-interval-unit').value+' / '+$('rem-interval-odo').value+' km'));
+
+  function buildRec(label){
+    var dueDate=null, dueOdo=null;
+    if(typ==='date'||typ==='both'){
+      const val=parseInt($('rem-interval-val').value)||12;
+      const unit=$('rem-interval-unit').value;
+      const months=unit==='years'?val*12:val;
+      const baseDate=ctx&&ctx.date?new Date(ctx.date):new Date();
+      const due=new Date(baseDate); due.setMonth(due.getMonth()+months);
+      dueDate=fmtDate(due);
+    }
+    if(typ==='odo'||typ==='both'){
+      const interval=parseInt($('rem-interval-odo').value)||10000;
+      const baseOdo=ctx&&ctx.odo?ctx.odo:0;
+      dueOdo=baseOdo+interval;
+      if(!dueOdo){ errEl.textContent='Enter odometer interval'; errEl.style.display='block'; return null; }
+    }
+    const desc=$('rem-note').value.trim();
+    var rec={label:label,dueType:typ,dueDate:dueDate,dueOdo:dueOdo,desc:desc,enabled:true,status:'active',createdAt:firebase.database.ServerValue.TIMESTAMP};
+    if(ctx){
+      rec.refLabel=ctx.refLabel||'';
+      rec.refDetail=ctx.refDetail||'';
+      rec.interval=intervalLabel;
+    }
+    return rec;
   }
-  if(typ==='odo'||typ==='both'){
-    const interval=parseInt($('rem-interval-odo').value)||10000;
-    const baseOdo=ctx&&ctx.odo?ctx.odo:0;
-    dueOdo=baseOdo+interval;
-    if(!dueOdo){ errEl.textContent='Enter odometer interval'; errEl.style.display='block'; return; }
-  }
-  const desc=$('rem-note').value.trim();
-  const rec={label:label,dueType:typ,dueDate:dueDate,dueOdo:dueOdo,desc:desc};
-  if(!window._editingReminderId){
-    rec.enabled=true;
-    rec.status='active';
-  }
-  // Store reference info if from a record
-  if(ctx){
-    rec.refLabel=ctx.refLabel||'';
-    rec.refDetail=ctx.refDetail||'';
-    rec.interval=(typ==='date'?($('rem-interval-val').value+' '+$('rem-interval-unit').value):(typ==='odo'?($('rem-interval-odo').value+' km'):($('rem-interval-val').value+' '+$('rem-interval-unit').value+' / '+$('rem-interval-odo').value+' km')));
-  }
+
   if(window._editingReminderId){
+    // Edit mode: single reminder update (no batch)
+    var rec=buildRec(labels[0]);
+    if(!rec) return;
     remindRef(activeVehicle).child(window._editingReminderId).update(rec).then(()=>{
       closeReminderModal();
       loadVehicleReminders(activeVehicle);
     });
   } else {
-    rec.createdAt=firebase.database.ServerValue.TIMESTAMP;
-    remindRef(activeVehicle).push().set(rec).then(()=>{
+    // Create: one reminder per label (batch)
+    var promises=labels.map(function(label){
+      var rec=buildRec(label);
+      if(!rec) return Promise.reject('bad');
+      return remindRef(activeVehicle).push().set(rec);
+    });
+    Promise.all(promises).then(()=>{
       closeReminderModal();
       loadVehicleReminders(activeVehicle);
-    });
+    }).catch(function(){});
   }
 });
 
