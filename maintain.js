@@ -17,7 +17,7 @@ firebase.initializeApp(FIREBASE_CONFIG);
 const auth = firebase.auth();
 const db = firebase.database();
 const storage = firebase.storage();
-const APP_VER = 'v1.43';
+const APP_VER = 'v1.44';
 const STAGING = location.hostname.includes('-staging');
 
 /* ─── EARLY VERSION DISPLAY ─── */
@@ -1009,7 +1009,7 @@ function loadRemindersTicker(){
           if(r.enabled===false) return;
           if(r.status==='completed') return; // skip done
           if(r.dueType==='both'){
-            // Combined: show only the more urgent condition, not both independently
+            // Combined: trigger on whichever hits first
             var odoHit=false, dateHit=false;
             var daysRemaining=null, isOverdue=false, odoRemaining=null;
             // Check date
@@ -1019,16 +1019,20 @@ function loadRemindersTicker(){
               if(daysRemaining<=90) dateHit=true;
               if(daysRemaining<=0) isOverdue=true;
             }
-            // Check odo (higher priority — if at 80%+, use odo display)
+            // Check odo: trigger at 80% through the interval (not 80% of absolute dueOdo)
             if(r.dueOdo && curOdo>0){
               odoRemaining=r.dueOdo-curOdo;
-              if(curOdo>=r.dueOdo*0.8) odoHit=true;
+              var odoInt=r.odoInterval||5000;
+              var baseOdo=r.dueOdo-odoInt;
+              if(curOdo>=baseOdo+odoInt*0.8) odoHit=true;
               if(odoRemaining<=0) isOverdue=true;
             }
+            // Odo hit = show odo; else date hit = show date
             if(odoHit){
-              entries.push({vid:vid,plate:v.plate||vid,label:r.label,days:isOverdue?-1:Math.ceil(Math.abs(odoRemaining)/100)*100,isOverdue:isOverdue,odoRemaining:odoRemaining});
+              entries.push({vid:vid,plate:v.plate||vid,label:r.label,days:odoRemaining<=0?-1:Math.ceil(Math.abs(odoRemaining)/100)*100,isOverdue:odoRemaining<=0,odoRemaining:odoRemaining});
+            } else if(dateHit){
+              entries.push({vid:vid,plate:v.plate||vid,label:r.label,days:daysRemaining,isOverdue:daysRemaining<=0});
             }
-            // Note: 'both' type only triggers on odo threshold in ticker; date path is omitted
           } else if(r.dueType==='date' && r.dueDate){
             // Date-based only
             var due=new Date(r.dueDate);
@@ -1036,9 +1040,10 @@ function loadRemindersTicker(){
             var isOverdue=daysRemaining<=0;
             if(daysRemaining<=90) entries.push({vid:vid,plate:v.plate||vid,label:r.label,days:daysRemaining,isOverdue:isOverdue});
           } else if(r.dueType==='odo' && r.dueOdo && curOdo>0){
-            // Odo-based only: warn at 80% of target
-            var threshold=r.dueOdo*0.8;
-            if(curOdo>=threshold){
+            // Odo-based only: warn at 80% through the interval
+            var odoInt=r.odoInterval||5000;
+            var baseOdo=r.dueOdo-odoInt;
+            if(curOdo>=baseOdo+odoInt*0.8){
               var odoRemaining=r.dueOdo-curOdo;
               var isOverdue=odoRemaining<=0;
               entries.push({vid:vid,plate:v.plate||vid,label:r.label,days:isOverdue?-1:Math.ceil(odoRemaining/100)*100,isOverdue:isOverdue,odoRemaining:odoRemaining});
@@ -1454,10 +1459,11 @@ $('btn-save-reminder').addEventListener('click',()=>{
       }
       const baseOdo=ctx&&ctx.odo?ctx.odo:0;
       dueOdo=baseOdo+interval;
+      var odoInterval=interval;
       if(!dueOdo){ errEl.textContent='Enter odometer interval'; errEl.style.display='block'; return null; }
     }
     const desc=$('rem-note').value.trim();
-    var rec={label:label,dueType:typ,dueDate:dueDate,dueOdo:dueOdo,desc:desc,enabled:true,status:'active',createdAt:firebase.database.ServerValue.TIMESTAMP};
+    var rec={label:label,dueType:typ,dueDate:dueDate,dueOdo:dueOdo,odoInterval:odoInterval||null,desc:desc,enabled:true,status:'active',createdAt:firebase.database.ServerValue.TIMESTAMP};
     if(ctx){
       rec.refLabel=ctx.refLabel||'';
       rec.refDetail=ctx.refDetail||'';
