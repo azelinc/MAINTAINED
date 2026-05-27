@@ -17,7 +17,7 @@ firebase.initializeApp(FIREBASE_CONFIG);
 const auth = firebase.auth();
 const db = firebase.database();
 const storage = firebase.storage();
-const APP_VER = 'v1.45';
+const APP_VER = 'v1.46';
 const STAGING = location.hostname.includes('-staging');
 
 /* ─── EARLY VERSION DISPLAY ─── */
@@ -1064,7 +1064,8 @@ function loadRemindersTicker(){
           } else {
             txt='<b>'+e.plate+'</b>: '+e.label+(e.isOverdue?' ('+Math.abs(e.days)+'d overdue)':(e.days>0?' (in '+e.days+'d)':' (today)'));
           }
-          return e.isOverdue?'<span style="color:var(--danger)">'+txt+'</span>':txt;
+          var cls=e.isOverdue?' style="color:var(--danger);cursor:pointer"':' style="cursor:pointer"';
+          return '<span'+cls+' onclick="event.stopPropagation();window._tickerOpenVehicle(\''+e.vid+'\')">'+txt+'</span>';
         }).join('  ·  ')+'  ·  ';
         // Duplicate content for seamless CSS marquee loop
         $('reminder-ticker-inner').innerHTML=tickerHTML+tickerHTML;
@@ -1072,6 +1073,20 @@ function loadRemindersTicker(){
     });
   });
 }
+
+window._tickerOpenVehicle=function(vid){
+  if(window.vehicles_cache&&window.vehicles_cache[vid]){
+    openVehicle(vid,window.vehicles_cache[vid]);
+    setTimeout(function(){
+      document.querySelectorAll('.tab-btn').forEach(function(t){t.classList.remove('active');});
+      document.querySelectorAll('.tab-panel').forEach(function(p){p.classList.remove('active');});
+      var remTab=document.querySelector('.tab-btn[data-tab=\'reminders\']');
+      if(remTab) remTab.classList.add('active');
+      var remPanel=$('tab-reminders');
+      if(remPanel) remPanel.classList.add('active');
+    },100);
+  }
+};
 
 function loadVehicleReminders(vid){
   remindRef(vid).once('value').then(s=>{
@@ -1278,7 +1293,7 @@ function showReminderForm(mode, rid, data, ctx){
   } else {
     // Fresh add
     $('rem-label').value='';
-    $('rem-type').value='date';
+    $('rem-type').value='both';
     $('rem-interval-val').value=12;
     $('rem-interval-unit').value='months';
     $('rem-interval-odo').value=10000;
