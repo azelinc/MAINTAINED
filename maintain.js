@@ -17,7 +17,7 @@ firebase.initializeApp(FIREBASE_CONFIG);
 const auth = firebase.auth();
 const db = firebase.database();
 const storage = firebase.storage();
-const APP_VER = 'v1.40';
+const APP_VER = 'v1.41';
 const STAGING = location.hostname.includes('-staging');
 
 /* ─── EARLY VERSION DISPLAY ─── */
@@ -1244,13 +1244,44 @@ function showReminderForm(mode, rid, data, ctx){
     // Batch items (from service with alsoServiced)
     $('rem-batch-items').style.display='none';
     $('rem-batch-chips').innerHTML='';
+    window._remBatchIds=[];
     if(ctx.extraItems&&ctx.extraItems.length){
       var allItems=[ctx.label].concat(ctx.extraItems.filter(function(x){return x!==ctx.label;}));
       $('rem-batch-items').style.display='block';
+      // Hide top interval fields when batch mode active
+      $('rem-interval-field').classList.add('hidden');
+      $('rem-odo-interval-field').classList.add('hidden');
+      // Show batch chip sub-fields type selector
+      var typ=$('rem-type').value;
       $('rem-batch-chips').innerHTML=allItems.map(function(item,i){
-        var checked=i===0?' checked':''; // main item pre-checked
-        return '<label class="chip rem-batch-chip" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px"><input type="checkbox" class="rem-batch-cb" data-item="'+esc(item)+'"'+checked+' style="margin:0">'+esc(item)+'</label>';
+        var checked=i===0?' checked':'';
+        var sd=smartInterval(item);
+        var id='rbi-'+i;
+        window._remBatchIds.push(id);
+        var fieldsHtml='';
+        if(typ==='date'||typ==='both'){
+          var months=sd.months;
+          fieldsHtml+='<span style="color:var(--muted);font-size:0.7rem;margin-right:4px">Every</span>'+
+            '<input type="number" class="rbi-val" id="'+id+'-val" value="'+months+'" min="1" style="width:50px;text-align:center">'+
+            '<select class="rbi-unit" id="'+id+'-unit" style="width:70px"><option value="months">months</option><option value="years">years</option></select>';
+        }
+        if(typ==='odo'||typ==='both'){
+          if(typ==='both') fieldsHtml+='<span style="color:var(--muted);font-size:0.7rem;margin:0 4px">or</span>';
+          fieldsHtml+='<span style="color:var(--muted);font-size:0.7rem;margin-right:4px">Every</span>'+
+            '<input type="number" class="rbi-odo" id="'+id+'-odo" value="'+sd.km+'" min="100" step="1000" style="width:60px;text-align:center">'+
+            '<span style="color:var(--muted);font-size:0.7rem;margin-left:4px">km</span>';
+        }
+        return '<div class="rem-batch-item" data-idx="'+i+'" style="margin:4px 0"><label class="chip rem-batch-chip" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;margin-bottom:4px">'+
+          '<input type="checkbox" class="rem-batch-cb" data-id="'+id+'" data-item="'+esc(item)+'"'+checked+' style="margin:0">'+esc(item)+'</label>'+
+          '<div class="rbi-fields" id="'+id+'-fields" style="display:'+(checked?'flex':'none')+';align-items:center;flex-wrap:wrap;gap:4px;margin:4px 0 8px 24px;font-size:0.8rem">'+fieldsHtml+'</div></div>';
       }).join('');
+      // Wire checkbox events to toggle fields
+      $('rem-batch-chips').querySelectorAll('.rem-batch-cb').forEach(function(cb){
+        cb.addEventListener('change',function(){
+          var fields=$(this.dataset.id+'-fields');
+          if(fields) fields.style.display=this.checked?'flex':'none';
+        });
+      });
     }
   } else {
     // Fresh add
@@ -1266,6 +1297,22 @@ function showReminderForm(mode, rid, data, ctx){
   updateRemFormFields();
   updateRemDuePreview();
   modal.classList.remove('hidden');
+}
+
+var SMART_DEFAULTS={
+  'engine oil':{months:6,km:5000},'oil filter':{months:6,km:5000},'brake fluid':{months:24,km:20000},
+  'brake pad':{months:12,km:15000},'spark plug':{months:24,km:20000},'coolant':{months:24,km:40000},
+  'chain':{months:6,km:5000},'sprocket':{months:12,km:20000},'battery':{months:24,km:30000},
+  'air filter':{months:12,km:10000},'cabin filter':{months:12,km:15000},
+  'tyre':{months:12,km:15000},'belt':{months:48,km:60000},
+  'tire':{months:12,km:15000},'suspension':{months:24,km:30000},
+  'normal service':{months:6,km:5000},'fuel treatment':{months:6,km:5000},
+  'reducer oil':{months:12,km:10000}
+};
+function smartInterval(itemName){
+  var n=(itemName||'').toLowerCase().trim();
+  for(var k in SMART_DEFAULTS){ if(n.includes(k)) return SMART_DEFAULTS[k]; }
+  return {months:12, km:10000};
 }
 
 function closeReminderModal(){
@@ -1356,18 +1403,29 @@ $('btn-save-reminder').addEventListener('click',()=>{
   const ctx=window._remCtx;
   var intervalLabel=typ==='date'?($('rem-interval-val').value+' '+$('rem-interval-unit').value):(typ==='odo'?($('rem-interval-odo').value+' km'):($('rem-interval-val').value+' '+$('rem-interval-unit').value+' / '+$('rem-interval-odo').value+' km'));
 
-  function buildRec(label){
+  function buildRec(label, idx){
     var dueDate=null, dueOdo=null;
+    var id='rbi-'+idx;
+    var usePerChip=window._remBatchIds&&window._remBatchIds.length;
     if(typ==='date'||typ==='both'){
-      const val=parseInt($('rem-interval-val').value)||12;
-      const unit=$('rem-interval-unit').value;
-      const months=unit==='years'?val*12:val;
+      var val=parseInt($('rem-interval-val').value)||12;
+      var unit=$('rem-interval-unit').value;
+      if(usePerChip){
+        var vEl=$(''+id+'-val'), uEl=$(''+id+'-unit');
+        if(vEl){ val=parseInt(vEl.value)||12; }
+        if(uEl){ unit=uEl.value; }
+      }
+      var months=unit==='years'?val*12:val;
       const baseDate=ctx&&ctx.date?new Date(ctx.date):new Date();
       const due=new Date(baseDate); due.setMonth(due.getMonth()+months);
       dueDate=fmtDate(due);
     }
     if(typ==='odo'||typ==='both'){
-      const interval=parseInt($('rem-interval-odo').value)||10000;
+      var interval=parseInt($('rem-interval-odo').value)||10000;
+      if(usePerChip){
+        var oEl=$(''+id+'-odo');
+        if(oEl){ interval=parseInt(oEl.value)||10000; }
+      }
       const baseOdo=ctx&&ctx.odo?ctx.odo:0;
       dueOdo=baseOdo+interval;
       if(!dueOdo){ errEl.textContent='Enter odometer interval'; errEl.style.display='block'; return null; }
@@ -1383,17 +1441,24 @@ $('btn-save-reminder').addEventListener('click',()=>{
   }
 
   if(window._editingReminderId){
-    // Edit mode: single reminder update (no batch)
-    var rec=buildRec(labels[0]);
+    // Edit mode: update label/interval/due — preserve status & enabled
+    var rec=buildRec(labels[0], -1);
     if(!rec) return;
+    delete rec.status;
+    delete rec.enabled;
+    delete rec.createdAt;
     remindRef(activeVehicle).child(window._editingReminderId).update(rec).then(()=>{
       closeReminderModal();
+      // reload WITHOUT auto-complete so the edit doesn't get re-marked
       loadVehicleReminders(activeVehicle);
     });
   } else {
     // Create: one reminder per label (batch)
-    var promises=labels.map(function(label){
-      var rec=buildRec(label);
+    var batchItems=$('rem-batch-chips').querySelectorAll('.rem-batch-cb');
+    var promises=labels.map(function(label, idx){
+      var itemIdx=-1;
+      batchItems.forEach(function(cb,ci){ if(cb.dataset.item===label) itemIdx=ci; });
+      var rec=buildRec(label, itemIdx);
       if(!rec) return Promise.reject('bad');
       return remindRef(activeVehicle).push().set(rec);
     });
