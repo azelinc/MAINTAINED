@@ -104,10 +104,10 @@ html, body {
   background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
   overflow: hidden; white-space: nowrap; font-size: 0.72rem; color: var(--warn);
 }
-.reminder-ticker-inner { display: inline-block; animation: ticker-scroll 20s linear infinite; }
+.reminder-ticker-inner { display: inline-block; animation: ticker-scroll 25s linear infinite; }
 @keyframes ticker-scroll {
-  0% { transform: translateX(100%); }
-  100% { transform: translateX(-100%); }
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
 }
 
 /* VEHICLE GRID */

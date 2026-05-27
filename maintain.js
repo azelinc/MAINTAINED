@@ -17,7 +17,7 @@ firebase.initializeApp(FIREBASE_CONFIG);
 const auth = firebase.auth();
 const db = firebase.database();
 const storage = firebase.storage();
-const APP_VER = 'v1.42';
+const APP_VER = 'v1.43';
 const STAGING = location.hostname.includes('-staging');
 
 /* ─── EARLY VERSION DISPLAY ─── */
@@ -1008,20 +1008,40 @@ function loadRemindersTicker(){
         Object.values(reminders).forEach(r=>{
           if(r.enabled===false) return;
           if(r.status==='completed') return; // skip done
-          // Date-based (date or both type)
-          if((r.dueType==='date'||r.dueType==='both') && r.dueDate){
+          if(r.dueType==='both'){
+            // Combined: show only the more urgent condition, not both independently
+            var odoHit=false, dateHit=false;
+            var daysRemaining=null, isOverdue=false, odoRemaining=null;
+            // Check date
+            if(r.dueDate){
+              var due=new Date(r.dueDate);
+              daysRemaining=Math.ceil((due-now())/86400000);
+              if(daysRemaining<=90) dateHit=true;
+              if(daysRemaining<=0) isOverdue=true;
+            }
+            // Check odo (higher priority — if at 80%+, use odo display)
+            if(r.dueOdo && curOdo>0){
+              odoRemaining=r.dueOdo-curOdo;
+              if(curOdo>=r.dueOdo*0.8) odoHit=true;
+              if(odoRemaining<=0) isOverdue=true;
+            }
+            if(odoHit){
+              entries.push({vid:vid,plate:v.plate||vid,label:r.label,days:isOverdue?-1:Math.ceil(Math.abs(odoRemaining)/100)*100,isOverdue:isOverdue,odoRemaining:odoRemaining});
+            }
+            // Note: 'both' type only triggers on odo threshold in ticker; date path is omitted
+          } else if(r.dueType==='date' && r.dueDate){
+            // Date-based only
             var due=new Date(r.dueDate);
             var daysRemaining=Math.ceil((due-now())/86400000);
             var isOverdue=daysRemaining<=0;
             if(daysRemaining<=90) entries.push({vid:vid,plate:v.plate||vid,label:r.label,days:daysRemaining,isOverdue:isOverdue});
-          }
-          // Odo-based (odo or both type): warn at 80% of target
-          if((r.dueType==='odo'||r.dueType==='both') && r.dueOdo && curOdo>0){
+          } else if(r.dueType==='odo' && r.dueOdo && curOdo>0){
+            // Odo-based only: warn at 80% of target
             var threshold=r.dueOdo*0.8;
             if(curOdo>=threshold){
               var odoRemaining=r.dueOdo-curOdo;
               var isOverdue=odoRemaining<=0;
-              entries.push({vid:vid,plate:v.plate||vid,label:r.label+' (odo)',days:isOverdue?-1:Math.ceil(odoRemaining/100)*100,isOverdue:isOverdue,odoRemaining:odoRemaining});
+              entries.push({vid:vid,plate:v.plate||vid,label:r.label,days:isOverdue?-1:Math.ceil(odoRemaining/100)*100,isOverdue:isOverdue,odoRemaining:odoRemaining});
             }
           }
         });
@@ -1030,15 +1050,17 @@ function loadRemindersTicker(){
       var ticker=$('reminder-ticker');
       if(entries.length){
         ticker.classList.remove('hidden');
-        $('reminder-ticker-inner').innerHTML=' ⚠ '+entries.map(e=>{
+        var tickerHTML=' ⚠ '+entries.map(e=>{
           var txt;
           if(e.odoRemaining!==undefined){
-            txt=e.plate+': '+e.label+(e.isOverdue?' ('+Math.abs(e.odoRemaining).toLocaleString()+' km over)':' (~'+Math.abs(e.odoRemaining).toLocaleString()+' km to go)');
+            txt='<b>'+e.plate+'</b>: '+e.label+(e.isOverdue?' ('+Math.abs(e.odoRemaining).toLocaleString()+' km over)':' (~'+Math.abs(e.odoRemaining).toLocaleString()+' km to go)');
           } else {
-            txt=e.plate+': '+e.label+(e.isOverdue?' ('+Math.abs(e.days)+'d overdue)':(e.days>0?' (in '+e.days+'d)':' (today)'));
+            txt='<b>'+e.plate+'</b>: '+e.label+(e.isOverdue?' ('+Math.abs(e.days)+'d overdue)':(e.days>0?' (in '+e.days+'d)':' (today)'));
           }
           return e.isOverdue?'<span style="color:var(--danger)">'+txt+'</span>':txt;
         }).join('  ·  ')+'  ·  ';
+        // Duplicate content for seamless CSS marquee loop
+        $('reminder-ticker-inner').innerHTML=tickerHTML+tickerHTML;
       } else { ticker.classList.add('hidden'); }
     });
   });
