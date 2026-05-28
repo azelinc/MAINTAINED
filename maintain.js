@@ -17,7 +17,7 @@ firebase.initializeApp(FIREBASE_CONFIG);
 const auth = firebase.auth();
 const db = firebase.database();
 const storage = firebase.storage();
-const APP_VER = 'v1.55';
+const APP_VER = 'v1.56';
 const STAGING = location.hostname.includes('-staging');
 
 /* ─── EARLY VERSION DISPLAY ─── */
@@ -821,10 +821,14 @@ $('btn-save-maintenance').addEventListener('click',()=>{
         const remPromises = [];
         if($('mt-autoremind').checked){
           const labels = [rec.items, ...Array.from(_mtAlsoSelected||[]).filter(x=>x!==rec.items)];
-          // Use nextDate/nextOdo if set, otherwise default to service date + 12mo / odo + 10000km
-          const rDueDate = rec.nextDate || (rec.date ? (()=>{ var d=new Date(rec.date); d.setMonth(d.getMonth()+12); return fmtDate(d); })() : null);
-          const rDueOdo = rec.nextOdo || (rec.odometer ? rec.odometer + 10000 : null);
           labels.forEach(lbl=>{
+            // Use nextDate/nextOdo if user set them, otherwise smart defaults
+            var rDueDate=rec.nextDate, rDueOdo=rec.nextOdo;
+            if(!rDueDate||!rDueOdo){
+              var sd=smartInterval(lbl);
+              if(!rDueDate && rec.date){ var d=new Date(rec.date); d.setMonth(d.getMonth()+sd.months); rDueDate=fmtDate(d); }
+              if(!rDueOdo && rec.odometer) rDueOdo=rec.odometer+sd.km;
+            }
             remPromises.push(remindRef(activeVehicle).push().set({
               label: lbl, date: rec.date, odometer: rec.odometer,
               type: 'service', dueDate: rDueDate, dueOdo: rDueOdo,
