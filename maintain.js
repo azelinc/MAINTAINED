@@ -17,7 +17,7 @@ firebase.initializeApp(FIREBASE_CONFIG);
 const auth = firebase.auth();
 const db = firebase.database();
 const storage = firebase.storage();
-const APP_VER = 'v1.54';
+const APP_VER = 'v1.55';
 const STAGING = location.hostname.includes('-staging');
 
 /* ─── EARLY VERSION DISPLAY ─── */
@@ -817,14 +817,17 @@ $('btn-save-maintenance').addEventListener('click',()=>{
         promises.push(vRef().child(activeVehicle).update({ odometer: odo, updatedAt: firebase.database.ServerValue.TIMESTAMP }));
       }
       Promise.all(promises).then(()=>{
-        // Auto-create reminders if checkbox checked and due date/odo set
+        // Auto-create reminders if checkbox checked
         const remPromises = [];
-        if($('mt-autoremind').checked && (rec.nextDate || rec.nextOdo)){
+        if($('mt-autoremind').checked){
           const labels = [rec.items, ...Array.from(_mtAlsoSelected||[]).filter(x=>x!==rec.items)];
+          // Use nextDate/nextOdo if set, otherwise default to service date + 12mo / odo + 10000km
+          const rDueDate = rec.nextDate || (rec.date ? (()=>{ var d=new Date(rec.date); d.setMonth(d.getMonth()+12); return fmtDate(d); })() : null);
+          const rDueOdo = rec.nextOdo || (rec.odometer ? rec.odometer + 10000 : null);
           labels.forEach(lbl=>{
             remPromises.push(remindRef(activeVehicle).push().set({
               label: lbl, date: rec.date, odometer: rec.odometer,
-              type: 'service', dueDate: rec.nextDate||null, dueOdo: rec.nextOdo||null,
+              type: 'service', dueDate: rDueDate, dueOdo: rDueOdo,
               enabled: true, status: 'active', createdAt: firebase.database.ServerValue.TIMESTAMP
             }));
           });
@@ -888,6 +891,9 @@ function editMaintenance(vid, mid){
       preview.classList.remove('hidden');
     } else { preview.innerHTML=''; preview.classList.add('hidden'); }
     $('btn-delete-maintenance').classList.remove('hidden');
+    // Trigger auto-remind checkbox check based on pre-filled nextDate/nextOdo
+    var hasVal=!!$('mt-next-odo').value.trim()||!!$('mt-next-date').value;
+    $('mt-autoremind').checked=hasVal;
     showScreen('add-maintenance-screen');
   });
 }
