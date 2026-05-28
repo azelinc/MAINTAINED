@@ -818,17 +818,21 @@ $('btn-save-maintenance').addEventListener('click',()=>{
       }
       Promise.all(promises).then(()=>{
         // Auto-create reminders if checkbox checked and due date/odo set
+        const remPromises = [];
         if($('mt-autoremind').checked && (rec.nextDate || rec.nextOdo)){
           const labels = [rec.items, ...Array.from(_mtAlsoSelected||[]).filter(x=>x!==rec.items)];
           labels.forEach(lbl=>{
-            remindRef(activeVehicle).push().set({
+            remPromises.push(remindRef(activeVehicle).push().set({
               label: lbl, date: rec.date, odometer: rec.odometer,
               type: 'service', dueDate: rec.nextDate||null, dueOdo: rec.nextOdo||null,
               enabled: true, status: 'active', createdAt: firebase.database.ServerValue.TIMESTAMP
-            });
+            }));
           });
         }
-        resetMaintenanceForm(); showScreen('vehicle-screen'); loadVehicleTabs(activeVehicle); });
+        Promise.all(remPromises).then(()=>{
+          resetMaintenanceForm(); showScreen('vehicle-screen'); loadVehicleTabs(activeVehicle);
+        });
+      });
     });
   };
 
