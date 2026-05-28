@@ -17,7 +17,7 @@ firebase.initializeApp(FIREBASE_CONFIG);
 const auth = firebase.auth();
 const db = firebase.database();
 const storage = firebase.storage();
-const APP_VER = 'v1.56';
+const APP_VER = 'v1.57';
 const STAGING = location.hostname.includes('-staging');
 
 /* ─── EARLY VERSION DISPLAY ─── */
@@ -1383,8 +1383,13 @@ var SMART_DEFAULTS={
   'normal service':{months:6,km:5000},'fuel treatment':{months:6,km:5000},
   'reducer oil':{months:12,km:10000}
 };
+var _smartDefaultsCache=null;
+function smartDefaultsRef(){ return uRef('settings/smartDefaults'); }
 function smartInterval(itemName){
   var n=(itemName||'').toLowerCase().trim();
+  // Check user overrides first
+  if(_smartDefaultsCache){ for(var k in _smartDefaultsCache){ if(n.includes(k)) return _smartDefaultsCache[k]; } }
+  // Fall back to hardcoded
   for(var k in SMART_DEFAULTS){ if(n.includes(k)) return SMART_DEFAULTS[k]; }
   return {months:12, km:10000};
 }
@@ -1779,6 +1784,86 @@ function addSvcItem(vType, inputId, listId, btnId){
 $('btn-svc-car-add').addEventListener('click',()=>addSvcItem('car','svc-car-input','svc-car-list','btn-svc-car-add'));
 $('btn-svc-mc-add').addEventListener('click',()=>addSvcItem('motorcycle','svc-mc-input','svc-mc-list','btn-svc-mc-add'));
 
+/* ─── SMART DEFAULT INTERVALS ─── */
+function renderSmartDefaults(){
+  smartDefaultsRef().once('value').then(s=>{
+    var items=s.val()||{};
+    // Merge hardcoded defaults in for first-time users, but don't overwrite existing
+    var merged={};
+    Object.keys(SMART_DEFAULTS).forEach(k=>{ merged[k]=items[k]||SMART_DEFAULTS[k]; });
+    Object.keys(items).forEach(k=>{ if(!merged[k]) merged[k]=items[k]; });
+    _smartDefaultsCache=merged;
+    var entries=Object.entries(merged);
+    entries.sort((a,b)=>a[0].localeCompare(b[0]));
+    var h=entries.map(([name,v])=>'<div class="sd-row" data-name="'+esc(name)+'">'+
+      '<span class="sd-name" style="flex:1;font-size:0.85rem;cursor:pointer">'+esc(name)+'</span>'+
+      '<span class="sd-months" style="cursor:pointer;color:var(--accent);font-size:0.82rem;min-width:50px">'+v.months+'mo</span>'+
+      '<span class="sd-km" style="cursor:pointer;color:var(--accent);font-size:0.82rem;min-width:60px;margin-left:4px">'+v.km.toLocaleString()+' km</span>'+
+      '<span class="sd-del" title="Delete" style="cursor:pointer;color:var(--muted);margin-left:8px;font-size:0.9rem">&times;</span>'+
+    '</div>').join('');
+    $('smart-defaults-list').innerHTML=h||'<div style="color:var(--muted);font-size:0.8rem">No defaults yet</div>';
+    // Click name → inline edit name
+    $('smart-defaults-list').querySelectorAll('.sd-name').forEach(el=>{
+      el.addEventListener('click',()=>startSDEdit('name',el,el.textContent,el.parentNode.dataset.name));
+    });
+    // Click months → inline edit
+    $('smart-defaults-list').querySelectorAll('.sd-months').forEach(el=>{
+      el.addEventListener('click',()=>startSDEdit('months',el,parseInt(el.textContent)||12,el.parentNode.dataset.name));
+    });
+    // Click km → inline edit
+    $('smart-defaults-list').querySelectorAll('.sd-km').forEach(el=>{
+      el.addEventListener('click',()=>startSDEdit('km',el,parseInt(el.textContent.replace(/[^0-9]/g,''))||10000,el.parentNode.dataset.name));
+    });
+    // Delete
+    $('smart-defaults-list').querySelectorAll('.sd-del').forEach(el=>{
+      el.addEventListener('click',e=>{
+        e.stopPropagation();
+        var name=el.parentNode.dataset.name;
+        smartDefaultsRef().child(name).remove().then(()=>renderSmartDefaults());
+      });
+    });
+  });
+}
+function startSDEdit(field, el, curVal, name){
+  var inp=document.createElement('input');
+  inp.type=field==='name'?'text':'number';
+  inp.value=field==='name'?curVal:parseInt(curVal)||12;
+  inp.style.cssText='font-size:0.82rem;padding:1px 3px;width:'+(field==='name'?'120px':'55px')+';background:var(--surface-2);border:1px solid var(--border);border-radius:4px;color:var(--text)';
+  if(field!=='name'){ inp.min=1; if(field==='km') inp.step=1000; }
+  el.parentNode.replaceChild(inp,el);
+  inp.focus(); inp.select();
+  function commit(){
+    var newVal=field==='name'?inp.value.trim():parseInt(inp.value)||1;
+    if(!newVal) return;
+    var row=inp.parentNode;
+    var oldName=row.dataset.name;
+    smartDefaultsRef().child(oldName).once('value').then(s=>{
+      var existing=s.val()||{};
+      if(field==='name'){
+        // Rename key
+        smartDefaultsRef().child(oldName).remove().then(()=>{
+          smartDefaultsRef().child(newVal).set(existing).then(()=>renderSmartDefaults());
+        });
+      } else {
+        existing[field]=newVal;
+        smartDefaultsRef().child(oldName).update({[field]:newVal}).then(()=>renderSmartDefaults());
+      }
+    });
+  }
+  inp.addEventListener('blur',commit);
+  inp.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); commit(); } });
+}
+$('btn-sd-add').addEventListener('click',()=>{
+  var name=$('sd-new-name').value.trim();
+  var months=parseInt($('sd-new-months').value)||12;
+  var km=parseInt($('sd-new-km').value)||10000;
+  if(!name) return;
+  smartDefaultsRef().child(name.toLowerCase()).set({months:months,km:km}).then(()=>{
+    $('sd-new-name').value=''; $('sd-new-months').value=''; $('sd-new-km').value='';
+    renderSmartDefaults();
+  });
+});
+
 /* ─── SETTINGS ─── */
 $('btn-settings').addEventListener('click',openSettings);
 $('btn-settings-back').addEventListener('click',()=>showScreen('dash-screen'));
@@ -1831,6 +1916,7 @@ function openSettings(){
   $('set-mod-reminders').checked=!!m.reminders;
   renderCategoryManager();
   renderServiceItemManager();
+  renderSmartDefaults();
   showScreen('settings-screen'); 
 }
 

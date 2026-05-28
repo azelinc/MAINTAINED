@@ -363,3 +363,9 @@ html, body {
 .receipt-preview img { max-width: 100%; max-height: 240px; border-radius: 8px; border: 1px solid var(--border); display: block; }
 .receipt-preview .file-badge { background: var(--surface); padding: 6px 12px; border-radius: 6px; font-size: 0.8rem; color: var(--muted); display: inline-block; }
 .vc-rem-badge.active { display: flex; background: var(--warn); box-shadow: 0 0 6px rgba(245,158,11,0.4); }
+
+/* ─── SMART DEFAULTS ─── */
+.sd-row { display: flex; align-items: center; gap: 4px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.sd-row:last-child { border-bottom: none; }
+.sd-name:hover, .sd-months:hover, .sd-km:hover { color: var(--accent) !important; }
+#smart-defaults-list { margin-bottom: 4px; }

@@ -349,6 +349,17 @@
         <label>Reminders Module</label>
         <label class="switch"><input type="checkbox" id="set-mod-reminders" checked><span class="slider"></span></label>
       </div>
+      <div class="field" id="smart-defaults-section">
+        <label>Service Intervals</label>
+        <p class="field-hint">Default due intervals used when creating reminders from service records. Tap to edit.</p>
+        <div id="smart-defaults-list"></div>
+        <div class="cat-add-row">
+          <input type="text" id="sd-new-name" placeholder="New item name..." autocomplete="off">
+          <input type="number" id="sd-new-months" placeholder="Months" min="1" style="width:60px">
+          <input type="number" id="sd-new-km" placeholder="Km" min="100" step="1000" style="width:70px">
+          <button id="btn-sd-add" class="btn-primary btn-sm">Add</button>
+        </div>
+      </div>
       <div class="field" id="veh-colors-section">
         <label>Vehicle Colors</label>
         <div id="veh-color-list"></div>
