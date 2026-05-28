@@ -17,7 +17,7 @@ firebase.initializeApp(FIREBASE_CONFIG);
 const auth = firebase.auth();
 const db = firebase.database();
 const storage = firebase.storage();
-const APP_VER = 'v1.57';
+const APP_VER = 'v1.58';
 const STAGING = location.hostname.includes('-staging');
 
 /* ─── EARLY VERSION DISPLAY ─── */
@@ -166,6 +166,10 @@ function detachListeners(){
   if(user){
     if(!currentUser){
       currentUser = { uid:user.uid, name:user.displayName||'User', email:user.email };
+      // Register FCM for push notifications (Android APK bridge)
+      if(typeof AndroidNotification !== 'undefined'){
+        user.getIdToken().then(t => AndroidNotification.registerFCM(user.uid, t));
+      }
       loadUserProfile(user.uid).then(p=>{
         if(p?.name){ currentUser.name = p.name; }
         $('dash-greeting').textContent = currentUser.email;
